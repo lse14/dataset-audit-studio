@@ -18,6 +18,7 @@ from dataset_audit_studio.app.modular_clustering_coordinator import (
 )
 from dataset_audit_studio.app.profile_materialization import materialize_profile
 from dataset_audit_studio.clustering.repository import ClusteringRepository
+from dataset_audit_studio.components.cluster_hierarchy.config import HierarchyConfig
 from dataset_audit_studio.components.semantic_embedding.contracts import (
     SemanticEmbeddingBatch,
 )
@@ -39,6 +40,7 @@ from dataset_audit_studio.reviews.types import CuratedReviewSelection
 from dataset_audit_studio.scoring.repository import ScoringRepository
 from dataset_audit_studio.scoring.types import SampleInput
 from PIL import Image
+from pydantic import ValidationError
 from sqlalchemy import func, select
 
 ORDER = ("embedding.semantic", "analysis.sae", "cluster.hierarchy")
@@ -111,6 +113,29 @@ def _with_seed(config: dict, seed: int) -> dict:
         profile="general",
         require_profile=True,
     )
+
+
+def test_hierarchy_materializes_semantic_duplicate_threshold() -> None:
+    components = materialize_profile("general")["components"]
+    components["embedding.semantic"]["enabled"] = True
+    components["cluster.hierarchy"]["enabled"] = True
+    components["cluster.hierarchy"]["config"]["semantic_duplicate_threshold"] = 0.992
+
+    materialized = ComponentTaskConfigMaterializer().materialize(
+        components,
+        profile="general",
+        require_profile=True,
+    )
+
+    assert materialized["components"]["cluster.hierarchy"]["config"][
+        "semantic_duplicate_threshold"
+    ] == 0.992
+    assert materialized["clustering"]["semantic_duplicate_threshold"] == 0.992
+
+    with pytest.raises(ValidationError):
+        HierarchyConfig(semantic_duplicate_threshold=0.799)
+    with pytest.raises(ValidationError):
+        HierarchyConfig(semantic_duplicate_threshold=1.001)
 
 
 def _prepare_task(
