@@ -18,7 +18,10 @@ from dataset_audit_studio.app.modular_clustering_coordinator import (
     build_clustering_component_plan,
 )
 from dataset_audit_studio.app.profile_materialization import materialize_profile
-from dataset_audit_studio.clustering.repository import ClusteringRepository
+from dataset_audit_studio.clustering.repository import (
+    EMBEDDING_ARTIFACT_KIND,
+    ClusteringRepository,
+)
 from dataset_audit_studio.components.cluster_hierarchy.config import HierarchyConfig
 from dataset_audit_studio.components.cluster_hierarchy.contracts import ClusterPlanNode
 from dataset_audit_studio.components.semantic_embedding.contracts import (
@@ -725,3 +728,116 @@ def test_hierarchy_change_reuses_embedding_artifact_without_runtime(
     )
     assert embedding.cached_samples == 10 and embedding.inferred_samples == 0
     assert hierarchy.output_count == 1
+
+
+def test_semantic_threshold_change_reuses_embeddings_and_replaces_evidence(
+    database: Database,
+    task_service: TaskService,
+    tmp_path: Path,
+) -> None:
+    original = _config(sae=False)
+    task_id = _prepare_task(
+        database,
+        task_service,
+        tmp_path / "source",
+        config=original,
+        count=4,
+    )
+    first_runtime = _LeafDuplicateEmbeddingRuntime()
+    service = ModularClusteringComponentService(
+        task_service,
+        embedding_runtime_factory=lambda _config, _assets: first_runtime,
+        project_root=tmp_path,
+    )
+    order = ("embedding.semantic", "cluster.hierarchy")
+    token = _claim(task_service, "threshold-first")
+    service.run(
+        token,
+        _assets(tmp_path),
+        component_id="embedding.semantic",
+        component_order=order,
+    )
+    service.run(
+        token,
+        RuntimeAssets(models_root=str(tmp_path), models=()),
+        component_id="cluster.hierarchy",
+        component_order=order,
+    )
+    finalize_modular_clustering(task_service, token, component_order=order)
+    assert first_runtime.calls == 1
+
+    with database.read_session() as session:
+        first_artifact_sha = session.scalar(
+            select(Artifact.sha256).where(
+                Artifact.task_id == task_id,
+                Artifact.kind == EMBEDDING_ARTIFACT_KIND,
+            )
+        )
+        first_evidence_count = session.scalar(
+            select(func.count())
+            .select_from(Evidence)
+            .where(
+                Evidence.task_id == task_id,
+                Evidence.code == "duplicate_semantic",
+            )
+        )
+    assert first_artifact_sha
+    assert first_evidence_count == 4
+
+    changed_components = copy.deepcopy(original["components"])
+    changed_components["cluster.hierarchy"]["config"][
+        "semantic_duplicate_threshold"
+    ] = 1.0
+    changed = ComponentTaskConfigMaterializer().materialize(
+        changed_components,
+        profile="general",
+        require_profile=True,
+    )
+    with database.write_session() as session:
+        task = session.get(Task, task_id)
+        assert task is not None
+        task.status = TaskStatus.PAUSED.value
+        task.resume_state = TaskStatus.SEMANTIC_CLUSTERING.value
+    task_service.update_config(task_id, changed)
+    task_service.resume_task(task_id)
+
+    second_runtime = _LeafDuplicateEmbeddingRuntime()
+    cached_service = ModularClusteringComponentService(
+        task_service,
+        embedding_runtime_factory=lambda _config, _assets: second_runtime,
+        project_root=tmp_path,
+    )
+    token = _claim(task_service, "threshold-second")
+    embedding = cached_service.run(
+        token,
+        _assets(tmp_path),
+        component_id="embedding.semantic",
+        component_order=order,
+    )
+    cached_service.run(
+        token,
+        RuntimeAssets(models_root=str(tmp_path), models=()),
+        component_id="cluster.hierarchy",
+        component_order=order,
+    )
+
+    assert embedding.cached_samples == 4
+    assert embedding.inferred_samples == 0
+    assert second_runtime.calls == 0
+    with database.read_session() as session:
+        second_artifact_sha = session.scalar(
+            select(Artifact.sha256).where(
+                Artifact.task_id == task_id,
+                Artifact.kind == EMBEDDING_ARTIFACT_KIND,
+            )
+        )
+        second_evidence_count = session.scalar(
+            select(func.count())
+            .select_from(Evidence)
+            .where(
+                Evidence.task_id == task_id,
+                Evidence.code == "duplicate_semantic",
+            )
+        )
+    assert second_artifact_sha == first_artifact_sha
+    assert second_evidence_count == 0

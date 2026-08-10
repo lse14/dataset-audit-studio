@@ -519,6 +519,7 @@ class ModularClusteringComponentService:
             max_branching=config.max_branching,
             kmeans_iterations=config.kmeans_iterations,
             seed=config.seed,
+            semantic_duplicate_threshold=config.semantic_duplicate_threshold,
         )
         character_consistency_enabled = (
             task.config.get("profile") == DatasetProfile.CHARACTER_CONCEPT.value
