@@ -5,6 +5,7 @@ import hashlib
 import os
 from pathlib import Path
 
+import dataset_audit_studio.app.modular_clustering as modular_clustering
 import numpy as np
 import pytest
 from dataset_audit_studio.app.component_task_config import ComponentTaskConfigMaterializer
@@ -19,6 +20,7 @@ from dataset_audit_studio.app.modular_clustering_coordinator import (
 from dataset_audit_studio.app.profile_materialization import materialize_profile
 from dataset_audit_studio.clustering.repository import ClusteringRepository
 from dataset_audit_studio.components.cluster_hierarchy.config import HierarchyConfig
+from dataset_audit_studio.components.cluster_hierarchy.contracts import ClusterPlanNode
 from dataset_audit_studio.components.semantic_embedding.contracts import (
     SemanticEmbeddingBatch,
 )
@@ -28,6 +30,7 @@ from dataset_audit_studio.database.models import (
     Artifact,
     ClusterNode,
     Evidence,
+    ReviewDecision,
     Sample,
     Task,
     TaskConfig,
@@ -242,6 +245,24 @@ class _CharacterEmbeddingRuntime(_EmbeddingRuntime):
         )
 
 
+class _LeafDuplicateEmbeddingRuntime(_EmbeddingRuntime):
+    def embed(self, samples) -> SemanticEmbeddingBatch:
+        self.calls += 1
+        matrix = np.asarray(
+            [
+                [1.0, 0.0, 0.0],
+                [0.9999, 0.01, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.9999, 0.01],
+            ],
+            dtype=np.float32,
+        )
+        return SemanticEmbeddingBatch(
+            tuple(sample.sample_id for sample in samples),
+            matrix,
+        )
+
+
 def test_clustering_plan_is_component_scoped_and_sae_is_optional() -> None:
     enabled = build_clustering_component_plan(_config(sae=True))
     assert [(item.component_id, item.model_ids) for item in enabled] == [
@@ -254,6 +275,121 @@ def test_clustering_plan_is_component_scoped_and_sae_is_optional() -> None:
         "embedding.semantic",
         "cluster.hierarchy",
     ]
+
+
+def test_hierarchy_persists_leaf_scoped_semantic_duplicate_evidence(
+    database: Database,
+    task_service: TaskService,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_id = _prepare_task(
+        database,
+        task_service,
+        tmp_path / "source",
+        config=_config(sae=False),
+        count=4,
+    )
+    root_key = "test:root"
+    nodes = (
+        ClusterPlanNode(
+            cluster_key=root_key,
+            parent_key=None,
+            scope_kind="artist",
+            scope_id="artist",
+            level=0,
+            sample_indices=(0, 1, 2, 3),
+            centroid=np.asarray([0.5, 0.5, 0.0], dtype=np.float32),
+            representative_index=0,
+            is_leaf=False,
+        ),
+        ClusterPlanNode(
+            cluster_key="test:leaf-a",
+            parent_key=root_key,
+            scope_kind="artist",
+            scope_id="artist",
+            level=1,
+            sample_indices=(0, 1),
+            centroid=np.asarray([1.0, 0.0, 0.0], dtype=np.float32),
+            representative_index=0,
+            is_leaf=True,
+        ),
+        ClusterPlanNode(
+            cluster_key="test:leaf-b",
+            parent_key=root_key,
+            scope_kind="artist",
+            scope_id="artist",
+            level=1,
+            sample_indices=(2, 3),
+            centroid=np.asarray([0.0, 1.0, 0.0], dtype=np.float32),
+            representative_index=0,
+            is_leaf=True,
+        ),
+    )
+    monkeypatch.setattr(
+        modular_clustering,
+        "hierarchical_clusters",
+        lambda *_args, **_kwargs: nodes,
+    )
+    runtime = _LeafDuplicateEmbeddingRuntime()
+    service = ModularClusteringComponentService(
+        task_service,
+        embedding_runtime_factory=lambda _config, _assets: runtime,
+        project_root=tmp_path,
+    )
+    order = ("embedding.semantic", "cluster.hierarchy")
+    token = _claim(task_service, "semantic-evidence")
+    service.run(
+        token,
+        _assets(tmp_path),
+        component_id="embedding.semantic",
+        component_order=order,
+    )
+    service.run(
+        token,
+        RuntimeAssets(models_root=str(tmp_path), models=()),
+        component_id="cluster.hierarchy",
+        component_order=order,
+    )
+    finalize_modular_clustering(task_service, token, component_order=order)
+
+    with database.read_session() as session:
+        evidence = session.scalars(
+            select(Evidence)
+            .where(
+                Evidence.task_id == task_id,
+                Evidence.code == "duplicate_semantic",
+            )
+            .order_by(Evidence.sample_id)
+        ).all()
+        decisions = session.scalars(
+            select(ReviewDecision).where(ReviewDecision.task_id == task_id)
+        ).all()
+
+    assert len(evidence) == 4
+    assert len({row.metadata_json["group_key"] for row in evidence}) == 2
+    assert {row.metadata_json["leaf_cluster_key"] for row in evidence} == {
+        "test:leaf-a",
+        "test:leaf-b",
+    }
+    assert all(row.source == "semantic_duplicate_siglip2_v1" for row in evidence)
+    assert all(row.review_only is True for row in evidence)
+    assert all(row.threshold_number == pytest.approx(0.985) for row in evidence)
+    assert all(0.985 <= float(row.value_number or 0.0) <= 1.0 for row in evidence)
+    assert all(
+        {
+            "model_id",
+            "model_sha256",
+            "preprocessing_version",
+            "embedding_identity_hash",
+            "hierarchy_config_hash",
+            "scope_kind",
+            "scope_id",
+            "provenance",
+        }.issubset(row.metadata_json)
+        for row in evidence
+    )
+    assert decisions == []
 
 
 def test_character_profile_hierarchy_generates_role_review_candidates(
@@ -341,7 +477,11 @@ def test_character_profile_hierarchy_generates_role_review_candidates(
     )
 
     reviews = ReviewService(database)
-    pending = reviews.list_curated_candidates(task_id, evidence_type="risk")
+    pending = reviews.list_curated_candidates(
+        task_id,
+        evidence_type="risk",
+        reason_code="character_role_outlier",
+    )
     assert {
         (item.sample_id, item.reason_code, item.decision) for item in pending.items
     } == {
@@ -351,6 +491,7 @@ def test_character_profile_hierarchy_generates_role_review_candidates(
         task_id,
         evidence_type="risk",
         folder="alpha",
+        reason_code="character_role_outlier",
     )
     assert [item.sample_id for item in alpha_pending.items] == [sample.id]
     reviews.decide_curated_candidates(

@@ -610,6 +610,7 @@ class ModularClusteringComponentService:
                 True,
                 result.task.status,
             )
+        embedding_identity = self.repository.embedding_identity_metadata(shards)
         for scope_index in range(next_scope, len(scopes)):
             scope = scopes[scope_index]
             local_embeddings = embeddings[list(scope.sample_indices)]
@@ -690,6 +691,8 @@ class ModularClusteringComponentService:
                     hierarchy_config_hash=hierarchy_hash,
                     prepare=prepare,
                     character_consistency=character_consistency,
+                    semantic_duplicate_threshold=component_config.semantic_duplicate_threshold,
+                    embedding_identity=embedding_identity,
                 )
 
             result = self._commit(
