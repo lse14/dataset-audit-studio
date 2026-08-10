@@ -211,6 +211,54 @@ def test_exact_visual_and_semantic_duplicate_layers_choose_ranked_representative
     ]
 
 
+def test_semantic_duplicate_groups_use_stable_ids_and_record_direct_scores() -> None:
+    embeddings = np.asarray(
+        [
+            [1.0, 0.0],
+            [0.9999, 0.01],
+            [0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+
+    first = semantic_duplicate_groups(
+        (0, 1, 2),
+        embeddings,
+        threshold=0.99,
+        rank=lambda index: (index,),
+        stable_keys=("sample-a", "sample-b", "sample-c"),
+    )
+    repeated = semantic_duplicate_groups(
+        (0, 1, 2),
+        embeddings,
+        threshold=0.99,
+        rank=lambda index: (index,),
+        stable_keys=("sample-a", "sample-b", "sample-c"),
+    )
+    other_scope = semantic_duplicate_groups(
+        (0, 1, 2),
+        embeddings,
+        threshold=0.99,
+        rank=lambda index: (index,),
+        stable_keys=("sample-x", "sample-y", "sample-z"),
+    )
+
+    assert len(first) == 1
+    assert first[0].group_key == repeated[0].group_key
+    assert first[0].group_key != other_scope[0].group_key
+    assert first[0].member_indices == (0, 1)
+    assert first[0].member_scores == pytest.approx((0.9999, 0.9999), abs=1e-3)
+
+    with pytest.raises(ValueError, match="stable keys"):
+        semantic_duplicate_groups(
+            (0, 1),
+            embeddings,
+            threshold=0.99,
+            rank=lambda index: (index,),
+            stable_keys=("only-one",),
+        )
+
+
 def test_sqrt_quota_covers_leaves_before_weighting_and_handles_short_budget() -> None:
     sizes = {"a": 100, "b": 25, "c": 4}
     allocation = allocate_sqrt_quota(sizes, 9, ("a", "b", "c"))
