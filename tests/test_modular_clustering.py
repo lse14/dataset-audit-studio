@@ -32,6 +32,7 @@ from dataset_audit_studio.database.enums import ReviewState, TaskStatus
 from dataset_audit_studio.database.models import (
     Artifact,
     ClusterNode,
+    ComponentRun,
     Evidence,
     ReviewDecision,
     Sample,
@@ -393,6 +394,172 @@ def test_hierarchy_persists_leaf_scoped_semantic_duplicate_evidence(
         for row in evidence
     )
     assert decisions == []
+
+    reviews = ReviewService(database)
+    audit = reviews.list_duplicate_group_audit(
+        task_id,
+        evidence_type="semantic_duplicate",
+    )
+    assert audit.total == 2
+    assert audit.pending == 4
+    candidate_id = next(
+        row.sample_id
+        for row in evidence
+        if row.sample_id != row.metadata_json["representative_sample_id"]
+    )
+    reviews.decide_curated_candidates(
+        task_id,
+        selection=CuratedReviewSelection(
+            evidence_type="semantic_duplicate",
+            sample_ids=(candidate_id,),
+        ),
+        decision=ReviewState.APPROVED_EXCLUDE,
+    )
+
+    def eligibility_reason() -> str | None:
+        with database.read_session() as session:
+            task_row = session.get(Task, task_id)
+            assert task_row is not None
+            config_row = session.scalar(
+                select(TaskConfig).where(
+                    TaskConfig.task_id == task_id,
+                    TaskConfig.revision == task_row.current_config_revision,
+                )
+            )
+            assert config_row is not None
+            rows = list(
+                session.scalars(
+                    select(Sample).where(Sample.task_id == task_id).order_by(Sample.id)
+                ).all()
+            )
+            result = EligibilityResolver().resolve(
+                session,
+                task=task_row,
+                config=config_row,
+                rows=rows,
+                settings={
+                    "minimum_resolution": 1,
+                    "domain_minimum": None,
+                    "aesthetic_minimum": None,
+                    "style_outlier_mode": "off",
+                    "exclude_exact_visual_duplicates": False,
+                },
+            )
+            return result.outcomes[candidate_id].reason
+
+    assert eligibility_reason() == "manual_exclude"
+    reviews.decide_curated_candidates(
+        task_id,
+        selection=CuratedReviewSelection(
+            evidence_type="semantic_duplicate",
+            sample_ids=(candidate_id,),
+        ),
+        decision=ReviewState.APPROVED_KEEP,
+    )
+    assert eligibility_reason() is None
+
+
+def test_semantic_evidence_is_not_filtered_by_exact_visual_duplicate_setting(
+    database: Database,
+    task_service: TaskService,
+    tmp_path: Path,
+) -> None:
+    task_id = _prepare_task(
+        database,
+        task_service,
+        tmp_path / "semantic-only-source",
+        config=_config(sae=False),
+        count=2,
+    )
+    with database.write_session() as session:
+        task = session.get(Task, task_id)
+        assert task is not None
+        config = session.scalar(
+            select(TaskConfig).where(
+                TaskConfig.task_id == task_id,
+                TaskConfig.revision == task.current_config_revision,
+            )
+        )
+        assert config is not None
+        sample_ids = tuple(
+            session.scalars(
+                select(Sample.id)
+                .where(Sample.task_id == task_id)
+                .order_by(Sample.id)
+            ).all()
+        )
+        session.add(
+            ComponentRun(
+                task_id=task_id,
+                component_id="metrics.technical",
+                component_version="1.0.0",
+                phase="cpu_metrics",
+                phase_order=20,
+                execution="cpu_process",
+                status="completed",
+                config_hash=config.config_hash,
+                config_digest="d" * 64,
+                normalized_config_json={},
+                dependency_ids_json=[],
+                model_ids_json=[],
+                checkpoint_json={"component_complete": True},
+                completed_items=2,
+                total_items=2,
+                auto_enabled=False,
+            )
+        )
+        for sample_id in sample_ids:
+            session.add(
+                Evidence(
+                    task_id=task_id,
+                    sample_id=sample_id,
+                    code="duplicate_semantic",
+                    source="semantic_duplicate_siglip2_v1",
+                    value_json="semantic-only-group",
+                    threshold_json=0.985,
+                    value_number=0.99,
+                    threshold_number=0.985,
+                    metadata_json={"group_key": "semantic-only-group", "group_size": 2},
+                    severity="medium",
+                    review_only=True,
+                    bbox_json=None,
+                    algorithm_version="semantic_duplicate_siglip2_v1",
+                )
+            )
+
+    def resolve(exclude_exact_visual_duplicates: bool) -> dict[str, str | None]:
+        with database.read_session() as session:
+            task = session.get(Task, task_id)
+            assert task is not None
+            config = session.scalar(
+                select(TaskConfig).where(
+                    TaskConfig.task_id == task_id,
+                    TaskConfig.revision == task.current_config_revision,
+                )
+            )
+            assert config is not None
+            rows = list(
+                session.scalars(
+                    select(Sample).where(Sample.task_id == task_id).order_by(Sample.id)
+                ).all()
+            )
+            result = EligibilityResolver().resolve(
+                session,
+                task=task,
+                config=config,
+                rows=rows,
+                settings={
+                    "minimum_resolution": 1,
+                    "domain_minimum": None,
+                    "aesthetic_minimum": None,
+                    "style_outlier_mode": "off",
+                    "exclude_exact_visual_duplicates": exclude_exact_visual_duplicates,
+                },
+            )
+            return {sample_id: outcome.reason for sample_id, outcome in result.outcomes.items()}
+
+    assert set(resolve(False).values()) == {None}
+    assert set(resolve(True).values()) == {None}
 
 
 def test_character_profile_hierarchy_generates_role_review_candidates(
