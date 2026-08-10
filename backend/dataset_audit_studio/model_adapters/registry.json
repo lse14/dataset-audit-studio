@@ -1,0 +1,426 @@
+{
+  "schema_version": 1,
+  "registry_version": "2026-08-10.1",
+  "evidence_sources": [
+    "https://huggingface.co/api/models/lse14/lse14-scorer/revision/655377cb813d35291a2010031f724e778b7d80dd?blobs=true",
+    "https://huggingface.co/api/models/RedRocket/Hydra/revision/a7a4606cf07b742ec402c60fb641db898eaeeb2e?blobs=true",
+    "https://huggingface.co/api/models/Eugeoter/waifu-scorer-v3/revision/c2a747fd61d310a90e9cbbf8fc590c522f234424?blobs=true",
+    "https://huggingface.co/api/models/google/siglip2-so400m-patch16-naflex/revision/cc24074f717b612951c2dead130904ab9b65a81e?blobs=true",
+    "https://huggingface.co/api/models/facebook/dinov2-large/revision/47b73eefe95e8d44ec3623f8890bd894b6ea2d6c?blobs=true",
+    "https://huggingface.co/api/models/prithivMLmods/Watermark-Detection-SigLIP2/revision/ce32ed8fe48872dd7d15e1db2602a0d50ddceae0?blobs=true",
+    "https://huggingface.co/api/models/PaddlePaddle/PP-OCRv5_server_det_safetensors/revision/cbea9f3c3254c6ff7b0016cfbf90549e1ad4c5bb?blobs=true",
+    "https://huggingface.co/api/models/PaddlePaddle/PP-OCRv5_server_rec_safetensors/revision/542979d7cc3791732bb12af35313a6840952d79f?blobs=true",
+    "https://api.github.com/repos/WisconsinAIVision/UniversalFakeDetect/commits/76a0e3e60a8a06458707a625d269ba815a2e5919",
+    "https://huggingface.co/api/models/heathcliff01/Kaloscope2.0/revision/8d93704a0c260c23187f30f591c9e29c79807d44?blobs=true",
+    "https://github.com/spawner1145/comfyui-lsnet/commit/416d945e65b81ced93f1e762349d790ca92106b1",
+    "https://huggingface.co/api/models/OwensLab/commfor-model-384/revision/6076002bf0d9dd37537f965ee2f06f826c333b61?blobs=true"
+  ],
+  "models": [
+    {
+      "id": "aesthetic_lse14_5k",
+      "display_name": "LSE14 5K Aesthetic + Domain",
+      "purpose": "aesthetic_and_domain",
+      "source": {
+        "kind": "huggingface",
+        "repository": "lse14/lse14-scorer",
+        "revision": "655377cb813d35291a2010031f724e778b7d80dd",
+        "homepage": "https://huggingface.co/lse14/lse14-scorer",
+        "license": "apache-2.0",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "5kdataset.safetensors",
+          "size": 26285476,
+          "sha256": "f8020306baae1de94b085647121ed368e07c9cf36e1d4eb92e4f3372f3624faa",
+          "format": "safetensors"
+        }
+      ],
+      "loader": "aesthetic_lse14_fusion_v1",
+      "dependencies": ["jtp3_hydra", "waifu_scorer_v3", "openai_clip_vit_l14"],
+      "replaceable": true,
+      "replacement_schema": "lse14_fusion_multitask_v1"
+    },
+    {
+      "id": "jtp3_hydra",
+      "display_name": "JTP-3 Hydra",
+      "purpose": "aesthetic_feature",
+      "source": {
+        "kind": "huggingface",
+        "repository": "RedRocket/Hydra",
+        "revision": "a7a4606cf07b742ec402c60fb641db898eaeeb2e",
+        "homepage": "https://huggingface.co/RedRocket/Hydra",
+        "license": "apache-2.0",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "models/jtp-3-hydra.safetensors",
+          "size": 1002587976,
+          "sha256": "b2bb072dbc534f50a0fe4e74f77b44427a77b99941711536f49c0502b496f04e",
+          "format": "safetensors"
+        },
+        {
+          "path": "data/jtp-3-hydra-tags.csv",
+          "size": 196327,
+          "sha256": "aa0964419b9d29a5574f594aa6d693bbc3065c1c503a385b69baff90cc75a936",
+          "format": "csv"
+        }
+      ],
+      "loader": "jtp3_hydra_local_v1",
+      "dependencies": [],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "waifu_scorer_v3",
+      "display_name": "Waifu Scorer V3 Head",
+      "purpose": "aesthetic_feature",
+      "source": {
+        "kind": "huggingface",
+        "repository": "Eugeoter/waifu-scorer-v3",
+        "revision": "c2a747fd61d310a90e9cbbf8fc590c522f234424",
+        "homepage": "https://huggingface.co/Eugeoter/waifu-scorer-v3",
+        "license": "openrail",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "model.safetensors",
+          "size": 11219340,
+          "sha256": "7def1b66314e318d9b045ff225fd51bb83bfbca855b12b2e213a5483efe37efd",
+          "format": "safetensors"
+        }
+      ],
+      "loader": "waifu_scorer_v3_head_v1",
+      "dependencies": ["openai_clip_vit_l14"],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "openai_clip_vit_l14",
+      "display_name": "OpenAI CLIP ViT-L/14",
+      "purpose": "feature_backbone",
+      "source": {
+        "kind": "https",
+        "repository": null,
+        "revision": null,
+        "homepage": "https://github.com/openai/CLIP",
+        "license": "MIT",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "ViT-L-14.pt",
+          "size": 932768134,
+          "sha256": "b8cca3fd41ae0c99ba7e8951adf17d267cdb84cd88be6f7c2e0eca1737a03836",
+          "format": "torchscript_pinned",
+          "url": "https://openaipublic.azureedge.net/clip/models/b8cca3fd41ae0c99ba7e8951adf17d267cdb84cd88be6f7c2e0eca1737a03836/ViT-L-14.pt"
+        }
+      ],
+      "loader": "openai_clip_vit_l14_v1",
+      "dependencies": [],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "universal_fake_detector_head",
+      "display_name": "UniversalFakeDetect Classifier Head",
+      "purpose": "ai_evidence",
+      "source": {
+        "kind": "github",
+        "repository": "WisconsinAIVision/UniversalFakeDetect",
+        "revision": "76a0e3e60a8a06458707a625d269ba815a2e5919",
+        "homepage": "https://github.com/WisconsinAIVision/UniversalFakeDetect",
+        "license": "MIT",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "fc_weights.pth",
+          "size": 4083,
+          "sha256": "477100745713bcc957beb2b40859536859b6483fd6301b3b9293151b194c7847",
+          "format": "pytorch_weights_only",
+          "url": "https://raw.githubusercontent.com/WisconsinAIVision/UniversalFakeDetect/76a0e3e60a8a06458707a625d269ba815a2e5919/pretrained_weights/fc_weights.pth"
+        }
+      ],
+      "loader": "universal_fake_detector_head_v1",
+      "dependencies": ["openai_clip_vit_l14"],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "community_forensics_model_384",
+      "display_name": "Community Forensics ViT-Small 384",
+      "purpose": "ai_evidence",
+      "source": {
+        "kind": "huggingface",
+        "repository": "OwensLab/commfor-model-384",
+        "revision": "6076002bf0d9dd37537f965ee2f06f826c333b61",
+        "homepage": "https://huggingface.co/OwensLab/commfor-model-384",
+        "license": "MIT",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "model.safetensors",
+          "size": 87262324,
+          "sha256": "b89f36275f3bf5e2b040eee36597a8f19db051bff9a473a9cf7b2466284fb387",
+          "format": "safetensors"
+        }
+      ],
+      "loader": "community_forensics_vit_small_384_v1",
+      "dependencies": [],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "siglip2_so400m_naflex",
+      "display_name": "SigLIP2 So400m NaFlex",
+      "purpose": "semantic_clustering",
+      "source": {
+        "kind": "huggingface",
+        "repository": "google/siglip2-so400m-patch16-naflex",
+        "revision": "cc24074f717b612951c2dead130904ab9b65a81e",
+        "homepage": "https://huggingface.co/google/siglip2-so400m-patch16-naflex",
+        "license": "apache-2.0",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "config.json",
+          "size": 590,
+          "sha256": "c633ddede50ec15d5818e04325bc4a5ac47c2762194a02486baee7d2a3a3dbc5",
+          "format": "json"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size": 393,
+          "sha256": "1125703e5446d5b6ff4d5893a33bac128cdd21dc12e3dad2469a648fb0ae3bf7",
+          "format": "json"
+        },
+        {
+          "path": "model.safetensors",
+          "size": 4542792928,
+          "sha256": "11a61a2068800d5f4f35cb041c1fea25de86ce87725e4c97a9ed046d0b22c076",
+          "format": "safetensors"
+        }
+      ],
+      "loader": "siglip2_image_embeddings_v1",
+      "dependencies": [],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "dinov2_large",
+      "display_name": "DINOv2 Large",
+      "purpose": "style_guard",
+      "source": {
+        "kind": "huggingface",
+        "repository": "facebook/dinov2-large",
+        "revision": "47b73eefe95e8d44ec3623f8890bd894b6ea2d6c",
+        "homepage": "https://huggingface.co/facebook/dinov2-large",
+        "license": "apache-2.0",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "config.json",
+          "size": 549,
+          "sha256": "12df51c069a2dc1305e34ba71ef58bc2407ea553b75f4722a1715c1bce3bbed0",
+          "format": "json"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size": 436,
+          "sha256": "14e780d86fa1861f8751f868d7f45425b5feb55c38ca26f152ca5097ab30f828",
+          "format": "json"
+        },
+        {
+          "path": "model.safetensors",
+          "size": 1217522888,
+          "sha256": "399fba97a95f22c36834418bc69373364a99af3a1153da1c0fb31db567c92e23",
+          "format": "safetensors"
+        }
+      ],
+      "loader": "dinov2_style_guard_v1",
+      "dependencies": [],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "vgg19_imagenet1k_v1",
+      "display_name": "TorchVision VGG19 IMAGENET1K_V1",
+      "purpose": "style_gram",
+      "source": {
+        "kind": "https",
+        "repository": null,
+        "revision": null,
+        "homepage": "https://pytorch.org/vision/stable/models/generated/torchvision.models.vgg19.html",
+        "license": "BSD-3-Clause",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "vgg19-dcbb9e9d.pth",
+          "size": 574673361,
+          "sha256": "dcbb9e9dad569fff7a846263a77324fc34978fea2bfb039c012d710e1776ae44",
+          "format": "pytorch_weights_only",
+          "url": "https://download.pytorch.org/models/vgg19-dcbb9e9d.pth"
+        }
+      ],
+      "loader": "torchvision_vgg19_gram_v1",
+      "dependencies": [],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "lsnet_kaloscope_v2",
+      "display_name": "Kaloscope v2 LSNet Artist Features",
+      "purpose": "artist_style_feature",
+      "source": {
+        "kind": "huggingface",
+        "repository": "heathcliff01/Kaloscope2.0",
+        "revision": "8d93704a0c260c23187f30f591c9e29c79807d44",
+        "homepage": "https://huggingface.co/heathcliff01/Kaloscope2.0",
+        "license": "apache-2.0",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "448-90.13/best_checkpoint.pth",
+          "size": 2937892740,
+          "sha256": "a86ba2fcf430cbb653ac995f7ab9cce34667434ee084973e19edf431808a32ae",
+          "format": "pytorch_weights_only"
+        }
+      ],
+      "loader": "lsnet_kaloscope_v2_features_v1",
+      "dependencies": [],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "watermark_siglip2",
+      "display_name": "Watermark Detection SigLIP2",
+      "purpose": "watermark_evidence",
+      "source": {
+        "kind": "huggingface",
+        "repository": "prithivMLmods/Watermark-Detection-SigLIP2",
+        "revision": "ce32ed8fe48872dd7d15e1db2602a0d50ddceae0",
+        "homepage": "https://huggingface.co/prithivMLmods/Watermark-Detection-SigLIP2",
+        "license": "apache-2.0",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "config.json",
+          "size": 1133,
+          "sha256": "ea97d917884a70ca1f543a0ea4a916b86704c69e13797246db130f73be26685b",
+          "format": "json"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size": 394,
+          "sha256": "9b36b57ebaf20f09bf4c22100ccc21877ea6bfe5aead0c00c59f8af8ccefacfc",
+          "format": "json"
+        },
+        {
+          "path": "model.safetensors",
+          "size": 371567992,
+          "sha256": "c0cbfb77eb98b584a4f5d3aabe2ad6d96b546958cd2d9a0587f4c9793b4a42ff",
+          "format": "safetensors"
+        }
+      ],
+      "loader": "siglip_watermark_classifier_v1",
+      "dependencies": [],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "ppocrv5_server_det",
+      "display_name": "PP-OCRv5 Server Detection",
+      "purpose": "ocr_detection",
+      "source": {
+        "kind": "huggingface",
+        "repository": "PaddlePaddle/PP-OCRv5_server_det_safetensors",
+        "revision": "cbea9f3c3254c6ff7b0016cfbf90549e1ad4c5bb",
+        "homepage": "https://huggingface.co/PaddlePaddle/PP-OCRv5_server_det_safetensors",
+        "license": "apache-2.0",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "config.json",
+          "size": 1591,
+          "sha256": "96a7ae464b59a9769aaf55d2b10e4dd8d3b64a7f3cbfa75bc2309febc6da2bcf",
+          "format": "json"
+        },
+        {
+          "path": "inference.yml",
+          "size": 903,
+          "sha256": "28fb721efc3634fc8aa677e474b9602cb815a91cf569ef357a7a553d7b3ce685",
+          "format": "yaml"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size": 812,
+          "sha256": "e2afd5f1732ff4f096d02731990ab5a73070fce816e3cdb44d19849acbbe6525",
+          "format": "json"
+        },
+        {
+          "path": "model.safetensors",
+          "size": 87994336,
+          "sha256": "06e7a44aa5c4146531e88703140e0f7329910b92f84f8bf2756bfd37cec5cb0a",
+          "format": "safetensors"
+        }
+      ],
+      "loader": "ppocrv5_server_det_v1",
+      "dependencies": [],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "ppocrv5_server_rec",
+      "display_name": "PP-OCRv5 Server Recognition",
+      "purpose": "ocr_recognition",
+      "source": {
+        "kind": "huggingface",
+        "repository": "PaddlePaddle/PP-OCRv5_server_rec_safetensors",
+        "revision": "542979d7cc3791732bb12af35313a6840952d79f",
+        "homepage": "https://huggingface.co/PaddlePaddle/PP-OCRv5_server_rec_safetensors",
+        "license": "apache-2.0",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "config.json",
+          "size": 768,
+          "sha256": "6e37472f191320b7da226b924ec282e5c5dbf4ac06f0f5ddf6d466ead60665c4",
+          "format": "json"
+        },
+        {
+          "path": "inference.yml",
+          "size": 148345,
+          "sha256": "2c719dba044c4e2228aef8ff92f5f575394d75d24c16de096a33b7cfd902f66d",
+          "format": "yaml"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "size": 202967,
+          "sha256": "2f9968f3f38a6fa0b94fd7342dcdbf3a8a53c20bb9e4ab23820a2170480381bf",
+          "format": "json"
+        },
+        {
+          "path": "model.safetensors",
+          "size": 84442268,
+          "sha256": "da94c5dd42c88b00c44081942b157bee8eda9ccd0481dbd0af3824f6c241aa91",
+          "format": "safetensors"
+        }
+      ],
+      "loader": "ppocrv5_server_rec_v1",
+      "dependencies": [],
+      "replaceable": false,
+      "replacement_schema": null
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+# Project-local runtimes and environments
+.runtime/
+.venv/
+.setup/*
+!.setup/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest-tmp/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+.playwright-cli/
+output/
+
+# Test artifacts and local diagnostics
+.test-tmp/
+test-results/
+frontend/test-results/
+
+# Models and generated task data
+models/*
+!models/README.md
+data/*
+!data/README.md
+
+# Local configuration and logs
+.env
+*.log
+*.part
+
+# Editors and OS files
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini

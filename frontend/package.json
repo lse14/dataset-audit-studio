@@ -1,0 +1,27 @@
+{
+  "name": "dataset-audit-studio-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "test": "node --experimental-strip-types --test tests/annotationOutputContract.test.mjs tests/componentConfigViews.test.mjs tests/duplicateAutoSelection.test.mjs tests/reviewGatePrompt.test.mjs tests/routeCodeSplitting.test.mjs tests/task7ProfileWorkspace.test.mjs tests/taskRefreshPolicy.test.mjs tests/taskStatusPrompt.test.mjs tests/ui1Presentation.test.mjs tests/riskListLayout.test.mjs tests/frontendArchitecture.test.mjs tests/httpTransport.test.mjs tests/taskEventTransport.test.mjs tests/systemFilesystemClients.test.mjs tests/componentProfileClients.test.mjs tests/taskPresetClients.test.mjs tests/workspaceClient.test.mjs tests/reviewExportClients.test.mjs tests/modelClient.test.mjs tests/appBootstrapHook.test.mjs tests/selectedTaskDataHook.test.mjs tests/taskEventRefreshHook.test.mjs",
+    "test:e2e": "playwright test",
+    "build": "tsc -b && vite build --configLoader runner",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@tanstack/react-virtual": "3.13.12",
+    "lucide-react": "1.25.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.0",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.3",
+    "typescript": "7.0.2",
+    "vite": "8.1.5"
+  }
+}

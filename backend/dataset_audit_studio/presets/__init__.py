@@ -1,0 +1,1 @@
+"""Persistent task configuration presets."""

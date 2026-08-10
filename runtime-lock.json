@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "uv": {
+    "version": "0.11.29",
+    "asset": "uv-x86_64-pc-windows-msvc.zip",
+    "url": "https://github.com/astral-sh/uv/releases/download/0.11.29/uv-x86_64-pc-windows-msvc.zip",
+    "sha256": "a047d55651bc3e0ca24595b25ec4cfcb10f9dca9fb56514e661269b37d4fae68"
+  },
+  "python": {
+    "version": "3.11.15",
+    "provider": "astral-sh/python-build-standalone",
+    "verification": "Pinned uv release embedded download manifest"
+  },
+  "node": {
+    "version": "24.18.0",
+    "asset": "node-v24.18.0-win-x64.zip",
+    "url": "https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip",
+    "sha256": "0ae68406b42d7725661da979b1403ec9926da205c6770827f33aac9d8f26e821"
+  }
+}
+
