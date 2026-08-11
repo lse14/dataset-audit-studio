@@ -5,6 +5,7 @@ import hashlib
 import os
 from pathlib import Path
 
+import dataset_audit_studio.app.modular_clustering as modular_clustering
 import numpy as np
 import pytest
 from dataset_audit_studio.app.component_task_config import ComponentTaskConfigMaterializer
@@ -17,7 +18,12 @@ from dataset_audit_studio.app.modular_clustering_coordinator import (
     build_clustering_component_plan,
 )
 from dataset_audit_studio.app.profile_materialization import materialize_profile
-from dataset_audit_studio.clustering.repository import ClusteringRepository
+from dataset_audit_studio.clustering.repository import (
+    EMBEDDING_ARTIFACT_KIND,
+    ClusteringRepository,
+)
+from dataset_audit_studio.components.cluster_hierarchy.config import HierarchyConfig
+from dataset_audit_studio.components.cluster_hierarchy.contracts import ClusterPlanNode
 from dataset_audit_studio.components.semantic_embedding.contracts import (
     SemanticEmbeddingBatch,
 )
@@ -26,7 +32,9 @@ from dataset_audit_studio.database.enums import ReviewState, TaskStatus
 from dataset_audit_studio.database.models import (
     Artifact,
     ClusterNode,
+    ComponentRun,
     Evidence,
+    ReviewDecision,
     Sample,
     Task,
     TaskConfig,
@@ -39,6 +47,7 @@ from dataset_audit_studio.reviews.types import CuratedReviewSelection
 from dataset_audit_studio.scoring.repository import ScoringRepository
 from dataset_audit_studio.scoring.types import SampleInput
 from PIL import Image
+from pydantic import ValidationError
 from sqlalchemy import func, select
 
 ORDER = ("embedding.semantic", "analysis.sae", "cluster.hierarchy")
@@ -111,6 +120,29 @@ def _with_seed(config: dict, seed: int) -> dict:
         profile="general",
         require_profile=True,
     )
+
+
+def test_hierarchy_materializes_semantic_duplicate_threshold() -> None:
+    components = materialize_profile("general")["components"]
+    components["embedding.semantic"]["enabled"] = True
+    components["cluster.hierarchy"]["enabled"] = True
+    components["cluster.hierarchy"]["config"]["semantic_duplicate_threshold"] = 0.992
+
+    materialized = ComponentTaskConfigMaterializer().materialize(
+        components,
+        profile="general",
+        require_profile=True,
+    )
+
+    assert materialized["components"]["cluster.hierarchy"]["config"][
+        "semantic_duplicate_threshold"
+    ] == 0.992
+    assert materialized["clustering"]["semantic_duplicate_threshold"] == 0.992
+
+    with pytest.raises(ValidationError):
+        HierarchyConfig(semantic_duplicate_threshold=0.799)
+    with pytest.raises(ValidationError):
+        HierarchyConfig(semantic_duplicate_threshold=1.001)
 
 
 def _prepare_task(
@@ -217,6 +249,24 @@ class _CharacterEmbeddingRuntime(_EmbeddingRuntime):
         )
 
 
+class _LeafDuplicateEmbeddingRuntime(_EmbeddingRuntime):
+    def embed(self, samples) -> SemanticEmbeddingBatch:
+        self.calls += 1
+        matrix = np.asarray(
+            [
+                [1.0, 0.0, 0.0],
+                [0.9999, 0.01, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.9999, 0.01],
+            ],
+            dtype=np.float32,
+        )
+        return SemanticEmbeddingBatch(
+            tuple(sample.sample_id for sample in samples),
+            matrix,
+        )
+
+
 def test_clustering_plan_is_component_scoped_and_sae_is_optional() -> None:
     enabled = build_clustering_component_plan(_config(sae=True))
     assert [(item.component_id, item.model_ids) for item in enabled] == [
@@ -229,6 +279,287 @@ def test_clustering_plan_is_component_scoped_and_sae_is_optional() -> None:
         "embedding.semantic",
         "cluster.hierarchy",
     ]
+
+
+def test_hierarchy_persists_leaf_scoped_semantic_duplicate_evidence(
+    database: Database,
+    task_service: TaskService,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task_id = _prepare_task(
+        database,
+        task_service,
+        tmp_path / "source",
+        config=_config(sae=False),
+        count=4,
+    )
+    root_key = "test:root"
+    nodes = (
+        ClusterPlanNode(
+            cluster_key=root_key,
+            parent_key=None,
+            scope_kind="artist",
+            scope_id="artist",
+            level=0,
+            sample_indices=(0, 1, 2, 3),
+            centroid=np.asarray([0.5, 0.5, 0.0], dtype=np.float32),
+            representative_index=0,
+            is_leaf=False,
+        ),
+        ClusterPlanNode(
+            cluster_key="test:leaf-a",
+            parent_key=root_key,
+            scope_kind="artist",
+            scope_id="artist",
+            level=1,
+            sample_indices=(0, 1),
+            centroid=np.asarray([1.0, 0.0, 0.0], dtype=np.float32),
+            representative_index=0,
+            is_leaf=True,
+        ),
+        ClusterPlanNode(
+            cluster_key="test:leaf-b",
+            parent_key=root_key,
+            scope_kind="artist",
+            scope_id="artist",
+            level=1,
+            sample_indices=(2, 3),
+            centroid=np.asarray([0.0, 1.0, 0.0], dtype=np.float32),
+            representative_index=0,
+            is_leaf=True,
+        ),
+    )
+    monkeypatch.setattr(
+        modular_clustering,
+        "hierarchical_clusters",
+        lambda *_args, **_kwargs: nodes,
+    )
+    runtime = _LeafDuplicateEmbeddingRuntime()
+    service = ModularClusteringComponentService(
+        task_service,
+        embedding_runtime_factory=lambda _config, _assets: runtime,
+        project_root=tmp_path,
+    )
+    order = ("embedding.semantic", "cluster.hierarchy")
+    token = _claim(task_service, "semantic-evidence")
+    service.run(
+        token,
+        _assets(tmp_path),
+        component_id="embedding.semantic",
+        component_order=order,
+    )
+    service.run(
+        token,
+        RuntimeAssets(models_root=str(tmp_path), models=()),
+        component_id="cluster.hierarchy",
+        component_order=order,
+    )
+    finalize_modular_clustering(task_service, token, component_order=order)
+
+    with database.read_session() as session:
+        evidence = session.scalars(
+            select(Evidence)
+            .where(
+                Evidence.task_id == task_id,
+                Evidence.code == "duplicate_semantic",
+            )
+            .order_by(Evidence.sample_id)
+        ).all()
+        decisions = session.scalars(
+            select(ReviewDecision).where(ReviewDecision.task_id == task_id)
+        ).all()
+
+    assert len(evidence) == 4
+    assert len({row.metadata_json["group_key"] for row in evidence}) == 2
+    assert {row.metadata_json["leaf_cluster_key"] for row in evidence} == {
+        "test:leaf-a",
+        "test:leaf-b",
+    }
+    assert all(row.source == "semantic_duplicate_siglip2_v1" for row in evidence)
+    assert all(row.review_only is True for row in evidence)
+    assert all(row.threshold_number == pytest.approx(0.92) for row in evidence)
+    assert all(0.92 <= float(row.value_number or 0.0) <= 1.0 for row in evidence)
+    assert all(
+        {
+            "model_id",
+            "model_sha256",
+            "preprocessing_version",
+            "embedding_identity_hash",
+            "hierarchy_config_hash",
+            "scope_kind",
+            "scope_id",
+            "provenance",
+        }.issubset(row.metadata_json)
+        for row in evidence
+    )
+    assert decisions == []
+
+    reviews = ReviewService(database)
+    audit = reviews.list_duplicate_group_audit(
+        task_id,
+        evidence_type="semantic_duplicate",
+    )
+    assert audit.total == 2
+    assert audit.pending == 4
+    candidate_id = next(
+        row.sample_id
+        for row in evidence
+        if row.sample_id != row.metadata_json["representative_sample_id"]
+    )
+    reviews.decide_curated_candidates(
+        task_id,
+        selection=CuratedReviewSelection(
+            evidence_type="semantic_duplicate",
+            sample_ids=(candidate_id,),
+        ),
+        decision=ReviewState.APPROVED_EXCLUDE,
+    )
+
+    def eligibility_reason() -> str | None:
+        with database.read_session() as session:
+            task_row = session.get(Task, task_id)
+            assert task_row is not None
+            config_row = session.scalar(
+                select(TaskConfig).where(
+                    TaskConfig.task_id == task_id,
+                    TaskConfig.revision == task_row.current_config_revision,
+                )
+            )
+            assert config_row is not None
+            rows = list(
+                session.scalars(
+                    select(Sample).where(Sample.task_id == task_id).order_by(Sample.id)
+                ).all()
+            )
+            result = EligibilityResolver().resolve(
+                session,
+                task=task_row,
+                config=config_row,
+                rows=rows,
+                settings={
+                    "minimum_resolution": 1,
+                    "domain_minimum": None,
+                    "aesthetic_minimum": None,
+                    "style_outlier_mode": "off",
+                    "exclude_exact_visual_duplicates": False,
+                },
+            )
+            return result.outcomes[candidate_id].reason
+
+    assert eligibility_reason() == "manual_exclude"
+    reviews.decide_curated_candidates(
+        task_id,
+        selection=CuratedReviewSelection(
+            evidence_type="semantic_duplicate",
+            sample_ids=(candidate_id,),
+        ),
+        decision=ReviewState.APPROVED_KEEP,
+    )
+    assert eligibility_reason() is None
+
+
+def test_semantic_evidence_is_not_filtered_by_exact_visual_duplicate_setting(
+    database: Database,
+    task_service: TaskService,
+    tmp_path: Path,
+) -> None:
+    task_id = _prepare_task(
+        database,
+        task_service,
+        tmp_path / "semantic-only-source",
+        config=_config(sae=False),
+        count=2,
+    )
+    with database.write_session() as session:
+        task = session.get(Task, task_id)
+        assert task is not None
+        config = session.scalar(
+            select(TaskConfig).where(
+                TaskConfig.task_id == task_id,
+                TaskConfig.revision == task.current_config_revision,
+            )
+        )
+        assert config is not None
+        sample_ids = tuple(
+            session.scalars(
+                select(Sample.id)
+                .where(Sample.task_id == task_id)
+                .order_by(Sample.id)
+            ).all()
+        )
+        session.add(
+            ComponentRun(
+                task_id=task_id,
+                component_id="metrics.technical",
+                component_version="1.0.0",
+                phase="cpu_metrics",
+                phase_order=20,
+                execution="cpu_process",
+                status="completed",
+                config_hash=config.config_hash,
+                config_digest="d" * 64,
+                normalized_config_json={},
+                dependency_ids_json=[],
+                model_ids_json=[],
+                checkpoint_json={"component_complete": True},
+                completed_items=2,
+                total_items=2,
+                auto_enabled=False,
+            )
+        )
+        for sample_id in sample_ids:
+            session.add(
+                Evidence(
+                    task_id=task_id,
+                    sample_id=sample_id,
+                    code="duplicate_semantic",
+                    source="semantic_duplicate_siglip2_v1",
+                    value_json="semantic-only-group",
+                    threshold_json=0.985,
+                    value_number=0.99,
+                    threshold_number=0.985,
+                    metadata_json={"group_key": "semantic-only-group", "group_size": 2},
+                    severity="medium",
+                    review_only=True,
+                    bbox_json=None,
+                    algorithm_version="semantic_duplicate_siglip2_v1",
+                )
+            )
+
+    def resolve(exclude_exact_visual_duplicates: bool) -> dict[str, str | None]:
+        with database.read_session() as session:
+            task = session.get(Task, task_id)
+            assert task is not None
+            config = session.scalar(
+                select(TaskConfig).where(
+                    TaskConfig.task_id == task_id,
+                    TaskConfig.revision == task.current_config_revision,
+                )
+            )
+            assert config is not None
+            rows = list(
+                session.scalars(
+                    select(Sample).where(Sample.task_id == task_id).order_by(Sample.id)
+                ).all()
+            )
+            result = EligibilityResolver().resolve(
+                session,
+                task=task,
+                config=config,
+                rows=rows,
+                settings={
+                    "minimum_resolution": 1,
+                    "domain_minimum": None,
+                    "aesthetic_minimum": None,
+                    "style_outlier_mode": "off",
+                    "exclude_exact_visual_duplicates": exclude_exact_visual_duplicates,
+                },
+            )
+            return {sample_id: outcome.reason for sample_id, outcome in result.outcomes.items()}
+
+    assert set(resolve(False).values()) == {None}
+    assert set(resolve(True).values()) == {None}
 
 
 def test_character_profile_hierarchy_generates_role_review_candidates(
@@ -316,7 +647,11 @@ def test_character_profile_hierarchy_generates_role_review_candidates(
     )
 
     reviews = ReviewService(database)
-    pending = reviews.list_curated_candidates(task_id, evidence_type="risk")
+    pending = reviews.list_curated_candidates(
+        task_id,
+        evidence_type="risk",
+        reason_code="character_role_outlier",
+    )
     assert {
         (item.sample_id, item.reason_code, item.decision) for item in pending.items
     } == {
@@ -326,6 +661,7 @@ def test_character_profile_hierarchy_generates_role_review_candidates(
         task_id,
         evidence_type="risk",
         folder="alpha",
+        reason_code="character_role_outlier",
     )
     assert [item.sample_id for item in alpha_pending.items] == [sample.id]
     reviews.decide_curated_candidates(
@@ -559,3 +895,116 @@ def test_hierarchy_change_reuses_embedding_artifact_without_runtime(
     )
     assert embedding.cached_samples == 10 and embedding.inferred_samples == 0
     assert hierarchy.output_count == 1
+
+
+def test_semantic_threshold_change_reuses_embeddings_and_replaces_evidence(
+    database: Database,
+    task_service: TaskService,
+    tmp_path: Path,
+) -> None:
+    original = _config(sae=False)
+    task_id = _prepare_task(
+        database,
+        task_service,
+        tmp_path / "source",
+        config=original,
+        count=4,
+    )
+    first_runtime = _LeafDuplicateEmbeddingRuntime()
+    service = ModularClusteringComponentService(
+        task_service,
+        embedding_runtime_factory=lambda _config, _assets: first_runtime,
+        project_root=tmp_path,
+    )
+    order = ("embedding.semantic", "cluster.hierarchy")
+    token = _claim(task_service, "threshold-first")
+    service.run(
+        token,
+        _assets(tmp_path),
+        component_id="embedding.semantic",
+        component_order=order,
+    )
+    service.run(
+        token,
+        RuntimeAssets(models_root=str(tmp_path), models=()),
+        component_id="cluster.hierarchy",
+        component_order=order,
+    )
+    finalize_modular_clustering(task_service, token, component_order=order)
+    assert first_runtime.calls == 1
+
+    with database.read_session() as session:
+        first_artifact_sha = session.scalar(
+            select(Artifact.sha256).where(
+                Artifact.task_id == task_id,
+                Artifact.kind == EMBEDDING_ARTIFACT_KIND,
+            )
+        )
+        first_evidence_count = session.scalar(
+            select(func.count())
+            .select_from(Evidence)
+            .where(
+                Evidence.task_id == task_id,
+                Evidence.code == "duplicate_semantic",
+            )
+        )
+    assert first_artifact_sha
+    assert first_evidence_count == 4
+
+    changed_components = copy.deepcopy(original["components"])
+    changed_components["cluster.hierarchy"]["config"][
+        "semantic_duplicate_threshold"
+    ] = 1.0
+    changed = ComponentTaskConfigMaterializer().materialize(
+        changed_components,
+        profile="general",
+        require_profile=True,
+    )
+    with database.write_session() as session:
+        task = session.get(Task, task_id)
+        assert task is not None
+        task.status = TaskStatus.PAUSED.value
+        task.resume_state = TaskStatus.SEMANTIC_CLUSTERING.value
+    task_service.update_config(task_id, changed)
+    task_service.resume_task(task_id)
+
+    second_runtime = _LeafDuplicateEmbeddingRuntime()
+    cached_service = ModularClusteringComponentService(
+        task_service,
+        embedding_runtime_factory=lambda _config, _assets: second_runtime,
+        project_root=tmp_path,
+    )
+    token = _claim(task_service, "threshold-second")
+    embedding = cached_service.run(
+        token,
+        _assets(tmp_path),
+        component_id="embedding.semantic",
+        component_order=order,
+    )
+    cached_service.run(
+        token,
+        RuntimeAssets(models_root=str(tmp_path), models=()),
+        component_id="cluster.hierarchy",
+        component_order=order,
+    )
+
+    assert embedding.cached_samples == 4
+    assert embedding.inferred_samples == 0
+    assert second_runtime.calls == 0
+    with database.read_session() as session:
+        second_artifact_sha = session.scalar(
+            select(Artifact.sha256).where(
+                Artifact.task_id == task_id,
+                Artifact.kind == EMBEDDING_ARTIFACT_KIND,
+            )
+        )
+        second_evidence_count = session.scalar(
+            select(func.count())
+            .select_from(Evidence)
+            .where(
+                Evidence.task_id == task_id,
+                Evidence.code == "duplicate_semantic",
+            )
+        )
+    assert second_artifact_sha == first_artifact_sha
+    assert second_evidence_count == 0

@@ -29,8 +29,8 @@ PROFILE_CONSTRAINTS: Mapping[DatasetProfile, ProfileConstraints] = MappingProxyT
             active_views=("broad",),
             scope_mode="concept",
             style_enabled=True,
-            semantic_enabled=False,
-            hierarchy_enabled=False,
+            semantic_enabled=True,
+            hierarchy_enabled=True,
         ),
         DatasetProfile.CHARACTER_CONCEPT: ProfileConstraints(
             policy_mode="report_only",
@@ -45,8 +45,8 @@ PROFILE_CONSTRAINTS: Mapping[DatasetProfile, ProfileConstraints] = MappingProxyT
             active_views=("broad",),
             scope_mode="global",
             style_enabled=False,
-            semantic_enabled=False,
-            hierarchy_enabled=False,
+            semantic_enabled=True,
+            hierarchy_enabled=True,
         ),
     }
 )

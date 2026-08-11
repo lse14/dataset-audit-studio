@@ -449,6 +449,12 @@ class SemanticClusterer:
                         result.task.status,
                     )
 
+            semantic_embedding_identity = (
+                self.repository.embedding_identity_metadata(registered_shards)
+                if scopes
+                else None
+            )
+
             completed_cluster_samples = sum(
                 len(scope.sample_indices) for scope in scopes[:next_scope]
             )
@@ -519,6 +525,7 @@ class SemanticClusterer:
                     current_embeddings=local_embeddings,
                     prepare=not clusters_prepared,
                 ) -> None:
+                    assert semantic_embedding_identity is not None
                     self.repository.persist_cluster_scope(
                         session,
                         task_id=task.id,
@@ -529,6 +536,8 @@ class SemanticClusterer:
                         hierarchy_config_hash=hierarchy_hash,
                         prepare=prepare,
                         character_consistency=character_consistency,
+                        semantic_duplicate_threshold=config.semantic_duplicate_threshold,
+                        embedding_identity=semantic_embedding_identity,
                     )
 
                 result = self.tasks.commit_batch(

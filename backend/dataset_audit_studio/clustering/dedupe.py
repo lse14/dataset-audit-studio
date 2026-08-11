@@ -72,6 +72,11 @@ def _group_key(kind: str, members: tuple[int, ...]) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()[:24]
 
 
+def _stable_group_key(kind: str, members: tuple[str, ...]) -> str:
+    payload = f"{kind}:" + "\0".join(sorted(members))
+    return hashlib.sha256(payload.encode()).hexdigest()[:24]
+
+
 def _as_groups(
     kind: str,
     members: tuple[tuple[int, ...], ...],
@@ -137,21 +142,49 @@ def semantic_duplicate_groups(
     *,
     threshold: float,
     rank: Callable[[int], RankKey],
+    stable_keys: tuple[str, ...] | None = None,
 ) -> tuple[DuplicateGroup, ...]:
     if len(indices) < 2:
         return ()
+    if stable_keys is not None and len(stable_keys) != len(embeddings):
+        raise ValueError("Semantic duplicate stable keys do not match embedding rows")
     matrix = np.ascontiguousarray(embeddings[list(indices)], dtype=np.float32)
     faiss.normalize_L2(matrix)
     index = faiss.IndexFlatIP(matrix.shape[1])
     index.add(matrix)
-    limits, _, neighbors = index.range_search(matrix, threshold)
+    limits, similarities, neighbors = index.range_search(matrix, threshold)
     union = _UnionFind(indices)
+    best_scores: dict[int, float] = {}
     for local_left in range(len(indices)):
         for position in range(limits[local_left], limits[local_left + 1]):
             local_right = int(neighbors[position])
+            if local_right == local_left:
+                continue
+            left = indices[local_left]
+            right = indices[local_right]
+            similarity = max(-1.0, min(1.0, float(similarities[position])))
+            best_scores[left] = max(best_scores.get(left, float("-inf")), similarity)
+            best_scores[right] = max(best_scores.get(right, float("-inf")), similarity)
             if local_right > local_left:
-                union.union(indices[local_left], indices[local_right])
-    return _as_groups("semantic", union.groups(), rank)
+                union.union(left, right)
+    groups = _as_groups("semantic", union.groups(), rank)
+    return tuple(
+        DuplicateGroup(
+            kind=group.kind,
+            group_key=(
+                _stable_group_key(
+                    "semantic",
+                    tuple(stable_keys[index] for index in group.member_indices),
+                )
+                if stable_keys is not None
+                else group.group_key
+            ),
+            member_indices=group.member_indices,
+            representative_index=group.representative_index,
+            member_scores=tuple(best_scores[index] for index in group.member_indices),
+        )
+        for group in groups
+    )
 
 
 def excluded_non_representatives(groups: tuple[DuplicateGroup, ...]) -> set[int]:

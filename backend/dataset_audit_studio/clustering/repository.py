@@ -10,6 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from dataset_audit_studio.clustering.assets import SIGLIP_MODEL_ID
+from dataset_audit_studio.clustering.dedupe import semantic_duplicate_groups
 from dataset_audit_studio.clustering.types import (
     ClusteringScope,
     ClusterPlanNode,
@@ -39,6 +40,8 @@ EMBEDDING_ARTIFACT_KIND = "siglip2_embeddings"
 SAE_ARTIFACT_KIND = "siglip_sae"
 CHARACTER_ROLE_EVIDENCE_CODE = "character_role_outlier"
 CHARACTER_ROLE_EVIDENCE_SOURCE = CHARACTER_CONSISTENCY_ALGORITHM_VERSION
+SEMANTIC_DUPLICATE_EVIDENCE_CODE = "duplicate_semantic"
+SEMANTIC_DUPLICATE_EVIDENCE_SOURCE = "semantic_duplicate_siglip2_v1"
 _CHARACTER_EVIDENCE_DELETE_BATCH_SIZE = 500
 
 
@@ -283,6 +286,8 @@ class ClusteringRepository:
         hierarchy_config_hash: str,
         prepare: bool,
         character_consistency: Mapping[str, object] | None = None,
+        semantic_duplicate_threshold: float = 0.985,
+        embedding_identity: Mapping[str, object] | None = None,
     ) -> None:
         if prepare:
             session.execute(delete(ClusterNode).where(ClusterNode.task_id == task_id))
@@ -292,8 +297,19 @@ class ClusteringRepository:
                     Evidence.source == CHARACTER_ROLE_EVIDENCE_SOURCE,
                 )
             )
+            session.execute(
+                delete(Evidence).where(
+                    Evidence.task_id == task_id,
+                    Evidence.source == SEMANTIC_DUPLICATE_EVIDENCE_SOURCE,
+                )
+            )
         id_by_key: dict[str, str] = {}
-        local_sample_ids = [samples[index].sample_id for index in scope.sample_indices]
+        local_sample_ids = tuple(
+            samples[index].sample_id for index in scope.sample_indices
+        )
+        local_relative_paths = tuple(
+            samples[index].relative_path for index in scope.sample_indices
+        )
         for node in nodes:
             parent_id = id_by_key.get(node.parent_key) if node.parent_key else None
             representative_sample_id = local_sample_ids[node.representative_index]
@@ -327,6 +343,19 @@ class ClusteringRepository:
                         is_representative=local_index == node.representative_index,
                     )
                 )
+        if embedding_identity is not None:
+            ClusteringRepository._persist_semantic_duplicates(
+                session,
+                task_id=task_id,
+                scope=scope,
+                nodes=nodes,
+                sample_ids=local_sample_ids,
+                relative_paths=local_relative_paths,
+                embeddings=scope_embeddings,
+                hierarchy_config_hash=hierarchy_config_hash,
+                semantic_duplicate_threshold=semantic_duplicate_threshold,
+                embedding_identity=embedding_identity,
+            )
         if character_consistency is not None:
             ClusteringRepository._persist_character_consistency(
                 session,
@@ -344,11 +373,30 @@ class ClusteringRepository:
     ) -> dict[str, object]:
         if not shards:
             raise RuntimeError("Character consistency requires embedding shards")
+        try:
+            embedding_identity = ClusteringRepository.embedding_identity_metadata(shards)
+        except RuntimeError as error:
+            raise RuntimeError(
+                "Character consistency embedding shard identity is inconsistent"
+            ) from error
+        return {
+            **embedding_identity,
+            "algorithm_version": CHARACTER_ROLE_EVIDENCE_SOURCE,
+            "algorithm_config": character_consistency_config_payload(),
+            "algorithm_config_hash": character_consistency_config_hash(),
+        }
+
+    @staticmethod
+    def embedding_identity_metadata(
+        shards: tuple[EmbeddingShard, ...] | list[EmbeddingShard],
+    ) -> dict[str, object]:
+        if not shards:
+            raise ValueError("Embedding identity requires at least one shard")
         embedding_versions = {
             (shard.model_sha256, shard.preprocessing_version) for shard in shards
         }
         if len(embedding_versions) != 1:
-            raise RuntimeError("Character consistency embedding shard identity is inconsistent")
+            raise RuntimeError("Embedding shard identity is inconsistent")
         model_sha256, preprocessing_version = next(iter(embedding_versions))
         embedding_identity_hash = hashlib.sha256(
             json.dumps(
@@ -367,10 +415,66 @@ class ClusteringRepository:
             "model_sha256": model_sha256,
             "preprocessing_version": preprocessing_version,
             "embedding_identity_hash": embedding_identity_hash,
-            "algorithm_version": CHARACTER_ROLE_EVIDENCE_SOURCE,
-            "algorithm_config": character_consistency_config_payload(),
-            "algorithm_config_hash": character_consistency_config_hash(),
         }
+
+    @staticmethod
+    def _persist_semantic_duplicates(
+        session: Session,
+        *,
+        task_id: str,
+        scope: ClusteringScope,
+        nodes: tuple[ClusterPlanNode, ...],
+        sample_ids: tuple[str, ...],
+        relative_paths: tuple[str, ...],
+        embeddings: np.ndarray,
+        hierarchy_config_hash: str,
+        semantic_duplicate_threshold: float,
+        embedding_identity: Mapping[str, object],
+    ) -> None:
+        for node in nodes:
+            if not node.is_leaf or len(node.sample_indices) < 2:
+                continue
+            groups = semantic_duplicate_groups(
+                node.sample_indices,
+                embeddings,
+                threshold=semantic_duplicate_threshold,
+                rank=lambda index: (relative_paths[index], sample_ids[index]),
+                stable_keys=sample_ids,
+            )
+            for group in groups:
+                representative_sample_id = sample_ids[group.representative_index]
+                for position, local_index in enumerate(group.member_indices):
+                    session.add(
+                        Evidence(
+                            task_id=task_id,
+                            sample_id=sample_ids[local_index],
+                            code=SEMANTIC_DUPLICATE_EVIDENCE_CODE,
+                            source=SEMANTIC_DUPLICATE_EVIDENCE_SOURCE,
+                            value_json=group.group_key,
+                            threshold_json=semantic_duplicate_threshold,
+                            value_number=group.member_scores[position],
+                            threshold_number=semantic_duplicate_threshold,
+                            metadata_json={
+                                **embedding_identity,
+                                "group_key": group.group_key,
+                                "group_size": len(group.member_indices),
+                                "representative_sample_id": representative_sample_id,
+                                "leaf_cluster_key": node.cluster_key,
+                                "scope_kind": node.scope_kind,
+                                "scope_id": scope.scope_id,
+                                "hierarchy_config_hash": hierarchy_config_hash,
+                                "threshold": semantic_duplicate_threshold,
+                                "provenance": {
+                                    "component_id": "cluster.hierarchy",
+                                    "algorithm_version": SEMANTIC_DUPLICATE_EVIDENCE_SOURCE,
+                                },
+                            },
+                            severity="medium",
+                            review_only=True,
+                            bbox_json=None,
+                            algorithm_version=SEMANTIC_DUPLICATE_EVIDENCE_SOURCE,
+                        )
+                    )
 
     @staticmethod
     def _persist_character_consistency(
@@ -447,6 +551,12 @@ class ClusteringRepository:
             delete(Evidence).where(
                 Evidence.task_id == task_id,
                 Evidence.source == CHARACTER_ROLE_EVIDENCE_SOURCE,
+            )
+        )
+        session.execute(
+            delete(Evidence).where(
+                Evidence.task_id == task_id,
+                Evidence.source == SEMANTIC_DUPLICATE_EVIDENCE_SOURCE,
             )
         )
 

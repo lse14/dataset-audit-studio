@@ -65,6 +65,7 @@ class ClusteringConfig(BaseModel):
                 "max_branching",
                 "kmeans_iterations",
                 "seed",
+                "semantic_duplicate_threshold",
             },
         )
 

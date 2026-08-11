@@ -306,7 +306,7 @@ class ComponentTaskConfigMaterializer:
             "seed": hierarchy["seed"],
             "phash_max_distance": 4,
             "colorhash_max_distance": 2,
-            "semantic_duplicate_threshold": 0.985,
+            "semantic_duplicate_threshold": hierarchy["semantic_duplicate_threshold"],
             "sae": sae,
         }
 

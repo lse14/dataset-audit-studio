@@ -66,6 +66,7 @@ class DuplicateGroup:
     group_key: str
     member_indices: tuple[int, ...]
     representative_index: int
+    member_scores: tuple[float | None, ...] = ()
 
 
 @dataclass(frozen=True)

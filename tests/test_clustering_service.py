@@ -112,6 +112,16 @@ def _with_target_leaf_size(config: dict, target_leaf_size: int) -> dict:
     )
 
 
+def _with_semantic_duplicate_threshold(config: dict, threshold: float) -> dict:
+    components = copy.deepcopy(config["components"])
+    components["cluster.hierarchy"]["config"]["semantic_duplicate_threshold"] = threshold
+    return ComponentTaskConfigMaterializer().materialize(
+        components,
+        profile="artist_concept",
+        require_profile=True,
+    )
+
+
 def _prepare_clustering_task(
     database: Database,
     tasks: TaskService,
@@ -343,6 +353,89 @@ def test_artist_clustering_persists_separate_scopes_sae_and_reuses_embeddings(
     ] == list(source_hashes)
 
 
+def test_compatibility_threshold_change_reuses_embeddings_and_replaces_evidence(
+    database: Database,
+    task_service: TaskService,
+    tmp_path: Path,
+) -> None:
+    original = _config(sae=False)
+    task_id, _ = _prepare_clustering_task(
+        database,
+        task_service,
+        tmp_path / "source",
+        config=original,
+    )
+    project = tmp_path / "project"
+    project.mkdir()
+    first_runtime = _FakeEmbeddingRuntime()
+    SemanticClusterer(
+        task_service,
+        runtime_factory=lambda _config, _assets: first_runtime,
+        project_root=project,
+    ).run(
+        _claim_clustering(task_service, "compat-threshold-first").token,
+        _siglip_assets(tmp_path),
+    )
+
+    with database.read_session() as session:
+        first_artifact_sha = session.scalar(
+            select(Artifact.sha256).where(
+                Artifact.task_id == task_id,
+                Artifact.kind == EMBEDDING_ARTIFACT_KIND,
+            )
+        )
+        first_evidence_count = session.scalar(
+            select(func.count())
+            .select_from(Evidence)
+            .where(
+                Evidence.task_id == task_id,
+                Evidence.code == "duplicate_semantic",
+            )
+        )
+    assert first_artifact_sha
+    assert first_evidence_count == 9
+
+    changed = _with_semantic_duplicate_threshold(original, 1.0)
+    with database.write_session() as session:
+        task = session.get(Task, task_id)
+        assert task is not None
+        task.status = TaskStatus.PAUSED.value
+        task.resume_state = TaskStatus.SEMANTIC_CLUSTERING.value
+    task_service.update_config(task_id, changed)
+    task_service.resume_task(task_id)
+
+    second_runtime = _FakeEmbeddingRuntime()
+    second = SemanticClusterer(
+        task_service,
+        runtime_factory=lambda _config, _assets: second_runtime,
+        project_root=project,
+    ).run(
+        _claim_clustering(task_service, "compat-threshold-second").token,
+        _siglip_assets(tmp_path),
+    )
+
+    assert second.cached_samples == 9
+    assert second.inferred_samples == 0
+    assert second_runtime.calls == 0
+    with database.read_session() as session:
+        second_artifact_sha = session.scalar(
+            select(Artifact.sha256).where(
+                Artifact.task_id == task_id,
+                Artifact.kind == EMBEDDING_ARTIFACT_KIND,
+            )
+        )
+        second_evidence_count = session.scalar(
+            select(func.count())
+            .select_from(Evidence)
+            .where(
+                Evidence.task_id == task_id,
+                Evidence.code == "duplicate_semantic",
+            )
+        )
+    assert second_artifact_sha == first_artifact_sha
+    assert second_evidence_count == 0
+
+
 def test_registered_embedding_tampering_is_rejected_even_when_container_is_valid(
     database: Database,
     task_service: TaskService,
@@ -486,6 +579,15 @@ def test_clustering_resume_summary_counts_nodes_from_committed_scopes(
     )
     assert paused.cluster_nodes == 1
     assert paused.final_status == TaskStatus.PAUSED.value
+    with database.read_session() as session:
+        paused_semantic_sample_ids = session.scalars(
+            select(Evidence.sample_id).where(
+                Evidence.task_id == task_id,
+                Evidence.code == "duplicate_semantic",
+            )
+        ).all()
+    assert len(paused_semantic_sample_ids) == 5
+    assert len(set(paused_semantic_sample_ids)) == 5
 
     monkeypatch.setattr(
         clustering_service_module,
@@ -507,5 +609,12 @@ def test_clustering_resume_summary_counts_nodes_from_committed_scopes(
     )
     assert resumed.cluster_nodes == 2
     assert resumed.final_status == TaskStatus.EVIDENCE_REVIEW.value
-
-
+    with database.read_session() as session:
+        resumed_semantic_sample_ids = session.scalars(
+            select(Evidence.sample_id).where(
+                Evidence.task_id == task_id,
+                Evidence.code == "duplicate_semantic",
+            )
+        ).all()
+    assert len(resumed_semantic_sample_ids) == 9
+    assert len(set(resumed_semantic_sample_ids)) == 9
