@@ -123,6 +123,8 @@ def _decode_pillow(
                 orientation = int(source.getexif().get(EXIF_ORIENTATION, 1))
             except (AttributeError, TypeError, ValueError):
                 orientation = None
+            if orientation is not None and not 1 <= orientation <= 8:
+                orientation = None
             if requires_render:
                 image = _first_pillow_frame(source)
                 media_kind = "animation"

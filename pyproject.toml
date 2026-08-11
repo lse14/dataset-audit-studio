@@ -1,6 +1,6 @@
 [project]
 name = "dataset-audit-studio"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local-first image training dataset audit and curation workbench"
 license = "GPL-3.0-only"
 readme = "README.md"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -158,8 +159,12 @@ class OCREvidenceRuntime:
             for target, value in zip(targets[start:end], recognized, strict=True):
                 image_index, region_index = target
                 region = results[image_index]["regions"][region_index]
+                recognition_score = float(value.get("score", 0.0))
                 region["text"] = str(value.get("text", ""))
-                region["recognition_score"] = float(value.get("score", 0.0))
+                region["recognition_score"] = recognition_score
+                if not math.isfinite(recognition_score):
+                    region["text"] = ""
+                    region["recognition_score"] = 0.0
 
     @staticmethod
     def _perspective_crop(image: Image.Image, points: np.ndarray) -> Image.Image | None:
@@ -201,4 +206,3 @@ class OCREvidenceRuntime:
         self.rec_processor = None
         self.rec_model = None
         release_torch_memory()
-

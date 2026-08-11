@@ -43,6 +43,23 @@ def test_static_image_sha_and_exif_display_orientation(tmp_path: Path) -> None:
         decoded.close()
 
 
+@pytest.mark.parametrize("orientation", (0, 9))
+def test_out_of_range_exif_orientation_is_recorded_as_unknown(
+    tmp_path: Path, orientation: int
+) -> None:
+    source = tmp_path / f"orientation-{orientation}.jpg"
+    image = Image.new("RGB", (20, 30), (10, 40, 220))
+    exif = Image.Exif()
+    exif[274] = orientation
+    image.save(source, quality=95, exif=exif)
+
+    decoded = decode_media(_item(source), ScanConfig(), extracted_root=tmp_path / "frames")
+    try:
+        assert decoded.exif_orientation is None
+    finally:
+        decoded.close()
+
+
 def test_gif_and_animated_webp_use_first_frame(tmp_path: Path, monkeypatch) -> None:
     project = tmp_path / "project"
     project.mkdir()

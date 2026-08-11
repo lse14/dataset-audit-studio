@@ -4,6 +4,7 @@ import logging
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import torch
 from dataset_audit_studio.components.aesthetic_domain import jtp3 as jtp3_module
 from dataset_audit_studio.components.aesthetic_domain.fusion import FusionHead
@@ -233,3 +234,39 @@ def test_ocr_detection_groups_heterogeneous_preprocessed_shapes() -> None:
             image.close()
     assert model.shapes == [(2, 3, 8, 8), (1, 3, 8, 12)]
     assert [result["regions"] for result in results] == [[], [], []]
+
+
+@pytest.mark.parametrize(
+    ("text", "score"),
+    (("", float("nan")), ("untrusted", float("inf"))),
+)
+def test_ocr_recognition_maps_nonfinite_scores_to_unknown(text: str, score: float) -> None:
+    class Inputs(dict):
+        def to(self, _device):
+            return self
+
+    class Processor:
+        def __call__(self, *, images, return_tensors):
+            return Inputs(pixel_values=torch.zeros((len(images), 3, 4, 4)))
+
+        def post_process_text_recognition(self, _outputs):
+            return [{"text": text, "score": score}]
+
+    class Model:
+        def __call__(self, *, pixel_values):
+            assert tuple(pixel_values.shape) == (1, 3, 4, 4)
+            return object()
+
+    runtime = object.__new__(OCREvidenceRuntime)
+    runtime.config = OCREvidenceConfig(device="cpu", precision="float32")
+    runtime.device = torch.device("cpu")
+    runtime.rec_processor = Processor()
+    runtime.rec_model = Model()
+    results = [{"regions": [{"text": "", "recognition_score": 0.0}]}]
+    crop = Image.new("RGB", (4, 4), "white")
+    try:
+        runtime._recognize([crop], [(0, 0)], results)
+    finally:
+        crop.close()
+
+    assert results == [{"regions": [{"text": "", "recognition_score": 0.0}]}]
