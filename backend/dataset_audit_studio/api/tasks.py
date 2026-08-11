@@ -143,6 +143,7 @@ def _export_run_error_response(error: ExportRunError) -> JSONResponse:
         "export_domain_minimum_invalid": 422,
         "export_duplicate_filter_invalid": 422,
         "export_style_outlier_mode_invalid": 422,
+        "export_image_format_invalid": 422,
         "export_task_not_completed": 409,
         "export_output_not_empty": 409,
         "export_output_already_used": 409,
@@ -368,6 +369,7 @@ def create_export_run(
             if payload.sample_seen_mode is not None
             else "off",
             sample_seen_target=payload.sample_seen_target,
+            image_format=payload.image_format if payload.image_format is not None else "original",
             preview_digest=payload.preview_digest,
         )
     except ExportRunError as error:
@@ -408,6 +410,7 @@ def preview_export_run(
             if payload.sample_seen_mode is not None
             else "off",
             sample_seen_target=payload.sample_seen_target,
+            image_format=payload.image_format if payload.image_format is not None else "original",
         )
     except ExportRunError as error:
         return _export_run_error_response(error)
@@ -553,6 +556,9 @@ def release_review_gate(
                 if payload.sample_seen_mode is not None
                 else "off",
                 sample_seen_target=payload.sample_seen_target,
+                image_format=(
+                    payload.image_format if payload.image_format is not None else "original"
+                ),
                 preview_digest=payload.preview_digest,
                 expected_version=payload.expected_version,
             )

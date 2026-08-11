@@ -31,6 +31,12 @@ from dataset_audit_studio.database.models import (
     TaskConfig,
 )
 from dataset_audit_studio.database.session import Database
+from dataset_audit_studio.export.image_conversion import (
+    ImageExportFormat,
+    encode_export_image,
+    normalize_image_format,
+    output_suffix,
+)
 from dataset_audit_studio.export_runs.eligibility import ELIGIBILITY_REASONS, EligibilityResolver
 from dataset_audit_studio.export_runs.errors import ExportRunError
 from dataset_audit_studio.export_runs.types import ExportRunPreview
@@ -99,6 +105,7 @@ class ExportRunPlanner:
         add_repeat_prefix: bool,
         sample_seen_mode: str,
         sample_seen_target: int | None,
+        image_format: str = "original",
     ) -> ExportRunPreview:
         with self.database.read_session() as session:
             task = session.get(Task, task_id)
@@ -140,6 +147,7 @@ class ExportRunPlanner:
                     "add_repeat_prefix": add_repeat_prefix,
                     "sample_seen_mode": sample_seen_mode,
                     "sample_seen_target": sample_seen_target,
+                    "image_format": normalize_image_format(image_format),
                     "keep_annotation_files": bool(export.get("keep_annotation_files", True)),
                 },
             )
@@ -224,6 +232,10 @@ class ExportRunPlanner:
             or not isinstance(settings.get("keep_annotation_files"), bool)
         ):
             raise ExportRunError("export_input_changed", "Export run settings changed")
+        if settings.get("image_format", "original") not in {"original", "jpeg", "png", "webp"}:
+            raise ExportRunError(
+                "export_image_format_invalid", "Export run image format is invalid"
+            )
         domain = settings.get("domain_minimum")
         if (
             domain is not None
@@ -243,6 +255,7 @@ class ExportRunPlanner:
         style_mode = settings.get("style_outlier_mode")
         if style_mode not in {"off", "strong", "all"}:
             raise ExportRunError("export_style_outlier_mode_invalid", "Style mode is invalid")
+        settings["image_format"] = normalize_image_format(settings.get("image_format", "original"))
         return dict(settings)
 
     def _build_current(
@@ -352,6 +365,8 @@ class ExportRunPlanner:
             target = 0
         files: list[PlannedFile] = []
         datasets: list[DatasetSummary] = []
+        image_format = normalize_image_format(settings.get("image_format", "original"))
+        used_converted_paths: set[str] = set()
         for folder in sorted(
             folder_items, key=lambda item: (item["output_folder"].casefold(), item["output_folder"])
         ):
@@ -386,13 +401,37 @@ class ExportRunPlanner:
                 relative = PurePosixPath(output_folder, *folder["suffixes"][row.id])
                 if sample.export_requires_render:
                     relative = relative.with_suffix(".png")
-                image = PlannedFile(
-                    relative.as_posix(),
-                    sha256_file(source),
-                    source.stat().st_size,
-                    "rendered_image" if sample.export_requires_render else "source_image",
-                    source_path=source,
-                )
+                if image_format == "original":
+                    image = PlannedFile(
+                        relative.as_posix(),
+                        sha256_file(source),
+                        source.stat().st_size,
+                        "rendered_image" if sample.export_requires_render else "source_image",
+                        source_path=source,
+                    )
+                else:
+                    relative = self._converted_destination(
+                        relative,
+                        source_relative=PurePosixPath(*folder["suffixes"][row.id]),
+                        image_format=image_format,
+                        used_paths=used_converted_paths,
+                        sample_id=row.id,
+                    )
+                    try:
+                        encoded = encode_export_image(source, image_format)
+                    except (OSError, ValueError) as error:
+                        raise ExportRunError(
+                            "export_image_conversion_failed",
+                            f"Unable to convert image: {row.relative_path}",
+                        ) from error
+                    image = PlannedFile(
+                        relative.as_posix(),
+                        hashlib.sha256(encoded).hexdigest(),
+                        len(encoded),
+                        "converted_image",
+                        source_path=source,
+                        transcode_format=image_format,
+                    )
                 files.append(image)
                 if settings.get("keep_annotation_files", True):
                     files.extend(
@@ -468,7 +507,13 @@ class ExportRunPlanner:
             "folders": folder_summaries,
             "exclusion_counts": exclusion_counts,
             "files": [
-                [item.destination_relative, item.sha256, item.size_bytes, item.kind]
+                [
+                    item.destination_relative,
+                    item.sha256,
+                    item.size_bytes,
+                    item.kind,
+                    item.transcode_format,
+                ]
                 for item in files
             ],
         }
@@ -507,6 +552,7 @@ class ExportRunPlanner:
                         if item.content is not None
                         else None
                     ),
+                    "transcode_format": item.transcode_format,
                 }
                 for item in files
             ],
@@ -547,14 +593,20 @@ class ExportRunPlanner:
         summary = snapshot.get("summary")
         entries = snapshot.get("files")
         eligibility_digest = snapshot.get("eligibility_digest")
+        snapshot_settings = snapshot.get("settings")
+        summary_settings = summary.get("settings") if isinstance(summary, dict) else None
+        if isinstance(snapshot_settings, dict) and "image_format" not in snapshot_settings:
+            snapshot_settings = {**snapshot_settings, "image_format": "original"}
+        if isinstance(summary_settings, dict) and "image_format" not in summary_settings:
+            summary_settings = {**summary_settings, "image_format": "original"}
         if (
             not isinstance(summary, dict)
             or summary.get("schema") != "export.run.summary.v3"
-            or summary.get("settings") != settings
+            or summary_settings != settings
             or not isinstance(eligibility_digest, str)
             or summary.get("eligibility_digest") != eligibility_digest
             or not isinstance(summary.get("eligibility_evidence"), dict)
-            or snapshot.get("settings") != settings
+            or snapshot_settings != settings
             or not isinstance(entries, list)
         ):
             raise ExportRunError("export_input_changed", "Export input snapshot is incomplete")
@@ -571,6 +623,7 @@ class ExportRunPlanner:
             kind = item.get("kind")
             source_ref = item.get("source_ref")
             content_raw = item.get("content_base64")
+            transcode_format = item.get("transcode_format")
             if (
                 not isinstance(destination, str)
                 or Path(destination).is_absolute()
@@ -583,6 +636,8 @@ class ExportRunPlanner:
                 or size < 0
                 or not isinstance(kind, str)
                 or (source_ref is None) == (content_raw is None)
+                or transcode_format not in {None, "jpeg", "png", "webp"}
+                or (transcode_format is not None and source_ref is None)
             ):
                 raise ExportRunError(
                     "export_input_changed", "Export input snapshot file is invalid"
@@ -614,6 +669,7 @@ class ExportRunPlanner:
                     kind=kind,
                     source_path=source_path,
                     content=content,
+                    transcode_format=transcode_format,
                 )
             )
         plan = ExportPlan(
@@ -756,6 +812,29 @@ class ExportRunPlanner:
                 continue
             by_path[key] = file
         return sorted(by_path.values(), key=lambda item: item.destination_relative)
+
+    @classmethod
+    def _converted_destination(
+        cls,
+        relative: PurePosixPath,
+        *,
+        source_relative: PurePosixPath,
+        image_format: ImageExportFormat,
+        used_paths: set[str],
+        sample_id: str,
+    ) -> PurePosixPath:
+        base = relative.with_suffix(output_suffix(image_format))
+        if cls._folder_key(base.as_posix()) not in used_paths:
+            used_paths.add(cls._folder_key(base.as_posix()))
+            return base
+        original_suffix = source_relative.suffix or f"__{sample_id}"
+        candidate = base.with_name(f"{base.stem}{original_suffix}{base.suffix}")
+        counter = 2
+        while cls._folder_key(candidate.as_posix()) in used_paths:
+            candidate = base.with_name(f"{base.stem}{original_suffix}_{counter}{base.suffix}")
+            counter += 1
+        used_paths.add(cls._folder_key(candidate.as_posix()))
+        return candidate
 
     @staticmethod
     def _aesthetic_identity(config: dict[str, Any]) -> dict[str, str]:

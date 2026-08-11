@@ -15,6 +15,7 @@ class PlannedFile:
     kind: str
     source_path: Path | None = None
     content: bytes | None = None
+    transcode_format: str | None = None
 
 
 @dataclass(frozen=True)

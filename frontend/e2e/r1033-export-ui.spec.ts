@@ -105,15 +105,17 @@ async function installApiMock(page: Page) {
     }
     if (suffix === 'export-runs' && request.method() === 'POST') {
       creates.push({ route: 'repeat', payload: request.postDataJSON() })
-      const payload = request.postDataJSON() as { output_root: string }
+      const payload = request.postDataJSON() as { image_format?: string, output_root: string }
       const created = run(`run-${runs[current.id].length + 1}`, current.id, payload.output_root)
+      created.settings = { image_format: payload.image_format ?? 'original' }
       runs[current.id].unshift(created)
       return json(route, created, 202)
     }
     if (suffix === 'review-gate/release' && request.method() === 'POST') {
       creates.push({ route: 'first', payload: request.postDataJSON() })
-      const payload = request.postDataJSON() as { output_root: string }
+      const payload = request.postDataJSON() as { image_format?: string, output_root: string }
       const created = run('run-first', current.id, payload.output_root)
+      created.settings = { image_format: payload.image_format ?? 'original' }
       runs[current.id].unshift(created)
       return json(route, created, 202)
     }
@@ -129,13 +131,17 @@ test('first copy export previews folders and releases the matching digest payloa
   await page.getByRole('button', { name: '稍后处理' }).click()
   await expect(page.getByRole('heading', { name: '配置首次导出' })).toBeVisible()
   await page.getByRole('textbox', { name: '导出目录', exact: true }).fill('E:/first-new')
+  await expect(page.getByLabel('导出图像格式', { exact: true })).toHaveValue('original')
+  await page.getByLabel('导出图像格式', { exact: true }).selectOption('webp')
   await page.getByRole('button', { name: '预览导出' }).click()
   await expect(page.getByText('artist-a')).toBeVisible()
+  expect(api.previews[0]).toMatchObject({ image_format: 'webp' })
   await page.screenshot({ path: 'test-results/r10-r1033-export-first-desktop-20260807-01.png' })
   await expect(page.getByRole('button', { name: '完成复核并创建导出' })).toBeEnabled()
   await page.getByRole('button', { name: '完成复核并创建导出' }).click()
   await expect.poll(() => api.creates.length).toBe(1)
-  expect(api.creates[0]).toMatchObject({ route: 'first', payload: { expected_gate: 'evidence_review', output_root: 'E:/first-new', preview_digest: digest } })
+  expect(api.creates[0]).toMatchObject({ route: 'first', payload: { expected_gate: 'evidence_review', output_root: 'E:/first-new', image_format: 'webp', preview_digest: digest } })
+  await expect(page.locator('.repeat-export-run').getByText('WebP', { exact: true })).toBeVisible()
 })
 
 test('input changes invalidate preview and completed copy export uses the same form', async ({ page }) => {

@@ -47,6 +47,7 @@ export function ExportsPage({ task }: { task: Task | null }) {
   const [addRepeatPrefix, setAddRepeatPrefix] = useState(true)
   const [sampleSeenMode, setSampleSeenMode] = useState<ExportRunSettings['sample_seen_mode']>('off')
   const [sampleSeenTarget, setSampleSeenTarget] = useState('')
+  const [imageFormat, setImageFormat] = useState<ExportRunSettings['image_format']>('original')
   const [preview, setPreview] = useState<ExportRunPreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
@@ -122,6 +123,7 @@ export function ExportsPage({ task }: { task: Task | null }) {
       add_repeat_prefix: addRepeatPrefix,
       sample_seen_mode: sampleSeenMode,
       sample_seen_target: sampleSeenMode === 'manual' ? Number(sampleSeenTarget) : null,
+      image_format: imageFormat,
     }
   }
 
@@ -208,6 +210,7 @@ export function ExportsPage({ task }: { task: Task | null }) {
           <div className="repeat-export-form">
             <label className="field span-2"><span>输出目录</span><div className="path-input"><input aria-label="导出目录" disabled={creating || previewLoading || pickerBusy} onChange={(event) => { setOutputRoot(event.target.value); invalidatePreview() }} value={outputRoot} /><button aria-busy={pickerBusy} aria-label="选择导出目录" className="icon-button path-picker-button" disabled={creating || previewLoading || pickerBusy} onClick={() => void browse()} title="用 Windows 窗口选择导出目录" type="button">{pickerBusy ? <LoaderCircle className="spin" size={17} /> : <FolderOpen size={17} />}</button></div></label>
             <label className="field"><span>最低分辨率</span><select aria-label="最低分辨率" disabled={creating || previewLoading} onChange={(event) => { setMinimumResolution(Number(event.target.value)); invalidatePreview() }} value={minimumResolution}>{profileResolutions.map((resolution) => <option key={resolution} value={resolution}>{resolution}</option>)}</select></label>
+            <label className="field"><span>导出图像格式</span><select aria-label="导出图像格式" disabled={creating || previewLoading} onChange={(event) => { setImageFormat(event.target.value as ExportRunSettings['image_format']); invalidatePreview() }} value={imageFormat}><option value="original">保持原格式</option><option value="jpeg">JPEG</option><option value="png">PNG</option><option value="webp">WebP</option></select></label>
             <label className="field"><span>最小文件夹图片数</span><input aria-label="最小文件夹图片数" disabled={creating || previewLoading} min="1" onChange={(event) => { setMinimumFolderImages(event.target.value); invalidatePreview() }} step="1" type="number" value={minimumFolderImages} /></label>
             <label className="repeat-aesthetic-toggle"><input aria-label="启用目标域最低分" checked={domainEnabled} disabled={creating || previewLoading} onChange={(event) => { setDomainEnabled(event.target.checked); invalidatePreview() }} type="checkbox" /><span>按目标域最低分筛选</span></label>
             <label className="repeat-aesthetic-toggle"><input aria-label="排除完全和视觉重复" checked={excludeExactVisualDuplicates} disabled={creating || previewLoading} onChange={(event) => { setExcludeExactVisualDuplicates(event.target.checked); invalidatePreview() }} type="checkbox" /><span>排除完全和视觉重复</span></label>
@@ -223,7 +226,7 @@ export function ExportsPage({ task }: { task: Task | null }) {
             {formError ? <ErrorBlock message={formError} /> : null}
             <div className="repeat-export-actions span-2"><button className="button secondary" disabled={creating || previewLoading} onClick={() => void requestPreview()} type="button">{previewLoading ? '正在预览' : '预览导出'}</button><button className="button primary" disabled={creating || previewLoading || preview === null || domainError !== null || aestheticError !== null || folderImagesError !== null || sampleTargetError !== null} onClick={() => void create()} type="button"><FolderOutput size={16} />{isFirstCopy ? '完成复核并创建导出' : '创建重复导出'}</button></div>
           </div>
-          {preview ? <ExportPreview preview={preview} /> : null}
+          {preview ? <ExportPreview imageFormat={imageFormat} preview={preview} /> : null}
         </section>
       ) : null}
 
@@ -242,15 +245,16 @@ export function ExportsPage({ task }: { task: Task | null }) {
   )
 }
 
-function ExportPreview({ preview }: { preview: ExportRunPreview }) {
+function ExportPreview({ imageFormat, preview }: { imageFormat: ExportRunSettings['image_format']; preview: ExportRunPreview }) {
   const excluded = exclusionText(preview.exclusion_counts)
-  return <section className="export-preview" aria-live="polite"><header><strong>预览</strong><span>纳入 {preview.included_count.toLocaleString()}，{excluded}</span></header><div className="export-preview-settings"><span>目标域 {preview.domain_minimum ?? '关闭'}</span><span>重复 {preview.exclude_exact_visual_duplicates ? '完全和视觉' : '关闭'}</span><span>画风 {styleOutlierLabel(preview.style_outlier_mode)}</span><span>美学 {preview.aesthetic_minimum ?? '关闭'}</span></div><div className="export-preview-folders">{preview.folders.map((folder, index) => { const item = record(folder); const name = text(item?.source_identifier) ?? `文件夹 ${index + 1}`; const imageCount = count(item?.image_count); const excludedFolder = item?.excluded === true; const warningCodes = Array.isArray(item?.warning_codes) ? item.warning_codes.filter((code): code is string => typeof code === 'string') : []; return <div className="export-preview-folder" key={`${name}:${index}`}><strong>{name}</strong><span>{excludedFolder ? '排除' : '纳入'} {imageCount.toLocaleString()} 张</span>{warningCodes.length > 0 ? <small>{warningCodes.join('，')}</small> : null}</div> })}</div>{preview.warnings.length > 0 ? <div className="export-preview-warnings">{preview.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div> : null}</section>
+  return <section className="export-preview" aria-live="polite"><header><strong>预览</strong><span>纳入 {preview.included_count.toLocaleString()}，{excluded}</span></header><div className="export-preview-settings"><span>图像 {imageFormatLabel(imageFormat)}</span><span>目标域 {preview.domain_minimum ?? '关闭'}</span><span>重复 {preview.exclude_exact_visual_duplicates ? '完全和视觉' : '关闭'}</span><span>画风 {styleOutlierLabel(preview.style_outlier_mode)}</span><span>美学 {preview.aesthetic_minimum ?? '关闭'}</span></div><div className="export-preview-folders">{preview.folders.map((folder, index) => { const item = record(folder); const name = text(item?.source_identifier) ?? `文件夹 ${index + 1}`; const imageCount = count(item?.image_count); const excludedFolder = item?.excluded === true; const warningCodes = Array.isArray(item?.warning_codes) ? item.warning_codes.filter((code): code is string => typeof code === 'string') : []; return <div className="export-preview-folder" key={`${name}:${index}`}><strong>{name}</strong><span>{excludedFolder ? '排除' : '纳入'} {imageCount.toLocaleString()} 张</span>{warningCodes.length > 0 ? <small>{warningCodes.join('，')}</small> : null}</div> })}</div>{preview.warnings.length > 0 ? <div className="export-preview-warnings">{preview.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div> : null}</section>
 }
 
 function ExportRunHistory({ run }: { run: ExportRun }) {
   const summary = record(run.summary)
+  const imageFormat = imageFormatLabel(run.settings.image_format)
   const total = summary ? { included: count(summary.included_count), exclusions: record(summary.exclusion_counts), warnings: Array.isArray(summary.warnings) ? summary.warnings.filter((item): item is string => typeof item === 'string') : [] } : null
-  return <article className="repeat-export-run"><header><div><strong title={run.output_root}>{run.output_root}</strong><span>最低分辨率 {run.minimum_resolution}</span></div><StatusPill value={run.status} /></header><dl><div><dt>进度</dt><dd>{run.progress_current.toLocaleString()} / {run.progress_total?.toLocaleString() ?? '未知'} 个文件</dd></div><div><dt>大小</dt><dd>{formatBytes(run.bytes_current)} / {run.bytes_total === null ? '未知' : formatBytes(run.bytes_total)}</dd></div><div><dt>清单</dt><dd title={run.manifest_sha256 ?? ''}>{run.manifest_sha256 ?? '尚未生成'}</dd></div>{run.aesthetic_minimum !== null ? <div><dt>美学最低分</dt><dd>{run.aesthetic_minimum}</dd></div> : null}</dl><div className="repeat-export-summary"><strong>筛除设置</strong><span>目标域 {run.domain_minimum ?? '关闭'}，重复 {run.exclude_exact_visual_duplicates ? '完全和视觉' : '关闭'}，画风 {styleOutlierLabel(run.style_outlier_mode)}</span></div>{run.error_code || run.error_message ? <ErrorBlock message={[run.error_code, run.error_message].filter(Boolean).join('：')} /> : null}{total ? <div className="repeat-export-summary"><strong>汇总</strong><span>导出 {total.included.toLocaleString()}，{exclusionText(total.exclusions ?? {})}</span>{total.warnings.length > 0 ? <span>警告 {total.warnings.join('，')}</span> : null}</div> : null}</article>
+  return <article className="repeat-export-run"><header><div><strong title={run.output_root}>{run.output_root}</strong><span>最低分辨率 {run.minimum_resolution}</span></div><StatusPill value={run.status} /></header><dl><div><dt>进度</dt><dd>{run.progress_current.toLocaleString()} / {run.progress_total?.toLocaleString() ?? '未知'} 个文件</dd></div><div><dt>大小</dt><dd>{formatBytes(run.bytes_current)} / {run.bytes_total === null ? '未知' : formatBytes(run.bytes_total)}</dd></div><div><dt>图像格式</dt><dd>{imageFormat}</dd></div><div><dt>清单</dt><dd title={run.manifest_sha256 ?? ''}>{run.manifest_sha256 ?? '尚未生成'}</dd></div>{run.aesthetic_minimum !== null ? <div><dt>美学最低分</dt><dd>{run.aesthetic_minimum}</dd></div> : null}</dl><div className="repeat-export-summary"><strong>筛除设置</strong><span>目标域 {run.domain_minimum ?? '关闭'}，重复 {run.exclude_exact_visual_duplicates ? '完全和视觉' : '关闭'}，画风 {styleOutlierLabel(run.style_outlier_mode)}</span></div>{run.error_code || run.error_message ? <ErrorBlock message={[run.error_code, run.error_message].filter(Boolean).join('：')} /> : null}{total ? <div className="repeat-export-summary"><strong>汇总</strong><span>导出 {total.included.toLocaleString()}，{exclusionText(total.exclusions ?? {})}</span>{total.warnings.length > 0 ? <span>警告 {total.warnings.join('，')}</span> : null}</div> : null}</article>
 }
 
 function positiveIntegerError(value: string, label: string): string | null {
@@ -277,6 +281,13 @@ function exclusionText(summary: Record<string, unknown> | Record<string, number>
 
 function styleOutlierLabel(mode: ExportRunSettings['style_outlier_mode']): string {
   return mode === 'all' ? '离群与强离群' : mode === 'strong' ? '仅强离群' : '关闭'
+}
+
+function imageFormatLabel(value: unknown): string {
+  if (value === 'jpeg') return 'JPEG'
+  if (value === 'png') return 'PNG'
+  if (value === 'webp') return 'WebP'
+  return '保持原格式'
 }
 
 export function formatBytes(value: number) {

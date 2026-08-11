@@ -75,6 +75,8 @@ export type TaskList = {
   limit: number
 }
 
+export type ExportImageFormat = 'original' | 'jpeg' | 'png' | 'webp'
+
 export type ExportRunSettings = {
   output_root: string
   minimum_resolution: number
@@ -86,6 +88,7 @@ export type ExportRunSettings = {
   add_repeat_prefix: boolean
   sample_seen_mode: 'off' | 'auto' | 'manual'
   sample_seen_target: number | null
+  image_format: ExportImageFormat
 }
 
 export type ExportRunCreateInput = ExportRunSettings & {

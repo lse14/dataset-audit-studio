@@ -186,6 +186,7 @@ def test_copy_review_gate_api_creates_first_run_without_task_export_phase(tmp_pa
         output = tmp_path / "api-first-export"
         output.mkdir()
         settings = _settings(output)
+        settings["image_format"] = "original"
         preview = client.post(
             f"/api/tasks/{task.id}/export-runs/preview",
             json=settings,

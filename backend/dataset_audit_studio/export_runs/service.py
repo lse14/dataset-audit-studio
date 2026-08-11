@@ -14,6 +14,7 @@ from dataset_audit_studio.database.base import utc_now
 from dataset_audit_studio.database.enums import TaskStatus
 from dataset_audit_studio.database.models import ExportRun, Task, TaskConfig
 from dataset_audit_studio.database.session import Database
+from dataset_audit_studio.export.image_conversion import ExportImageFormat, normalize_image_format
 from dataset_audit_studio.export.tree_publisher import ExportTreePublisher
 from dataset_audit_studio.export_runs.errors import ExportRunError, ExportRunNotFound
 from dataset_audit_studio.export_runs.planner import ExportRunPlanner
@@ -49,6 +50,7 @@ class ExportRunService:
         add_repeat_prefix: bool = True,
         sample_seen_mode: str = "off",
         sample_seen_target: int | None = None,
+        image_format: str = "original",
         preview_digest: str | None = None,
     ) -> ExportRunView:
         return self._create(
@@ -63,6 +65,7 @@ class ExportRunService:
             add_repeat_prefix=add_repeat_prefix,
             sample_seen_mode=sample_seen_mode,
             sample_seen_target=sample_seen_target,
+            image_format=image_format,
             preview_digest=preview_digest,
             expected_status=TaskStatus.COMPLETED,
             expected_version=None,
@@ -83,6 +86,7 @@ class ExportRunService:
         add_repeat_prefix: bool = True,
         sample_seen_mode: str = "off",
         sample_seen_target: int | None = None,
+        image_format: str = "original",
         preview_digest: str | None = None,
         expected_version: int | None = None,
     ) -> ExportRunView:
@@ -98,6 +102,7 @@ class ExportRunService:
             add_repeat_prefix=add_repeat_prefix,
             sample_seen_mode=sample_seen_mode,
             sample_seen_target=sample_seen_target,
+            image_format=image_format,
             preview_digest=preview_digest,
             expected_status=TaskStatus.EVIDENCE_REVIEW,
             expected_version=expected_version,
@@ -118,6 +123,7 @@ class ExportRunService:
         add_repeat_prefix: bool,
         sample_seen_mode: str,
         sample_seen_target: int | None,
+        image_format: str,
         preview_digest: str | None,
         expected_status: TaskStatus,
         expected_version: int | None,
@@ -135,6 +141,7 @@ class ExportRunService:
             sample_seen_mode=sample_seen_mode,
             sample_seen_target=sample_seen_target,
         )
+        normalized_image_format = self._validate_image_format(image_format)
         if not self._is_digest(preview_digest):
             raise ExportRunError("export_preview_required", "A current preview_digest is required")
         output_key = self._output_key(path)
@@ -196,6 +203,7 @@ class ExportRunService:
                     add_repeat_prefix=selection["add_repeat_prefix"],
                     sample_seen_mode=selection["sample_seen_mode"],
                     sample_seen_target=selection["sample_seen_target"],
+                    image_format=normalized_image_format,
                     minimum_resolution=minimum_resolution,
                     domain_minimum=domain,
                     exclude_exact_visual_duplicates=duplicate_filter,
@@ -267,6 +275,7 @@ class ExportRunService:
         add_repeat_prefix: bool = True,
         sample_seen_mode: str = "off",
         sample_seen_target: int | None = None,
+        image_format: str = "original",
     ) -> ExportRunPreview:
         path = self._validate_output_root(output_root)
         self._validate_resolution(minimum_resolution)
@@ -280,6 +289,7 @@ class ExportRunService:
             sample_seen_mode=sample_seen_mode,
             sample_seen_target=sample_seen_target,
         )
+        normalized_image_format = self._validate_image_format(image_format)
         with self.database.read_session() as session:
             task, config = self._current_task_config(session, task_id)
             if not self._has_builtin_profile(config.config_json):
@@ -315,6 +325,7 @@ class ExportRunService:
             add_repeat_prefix=selection["add_repeat_prefix"],
             sample_seen_mode=selection["sample_seen_mode"],
             sample_seen_target=selection["sample_seen_target"],
+            image_format=normalized_image_format,
         )
         return preview
 
@@ -436,6 +447,13 @@ class ExportRunService:
         return value
 
     @staticmethod
+    def _validate_image_format(value: object) -> ExportImageFormat:
+        try:
+            return normalize_image_format(value)
+        except ValueError as error:
+            raise ExportRunError("export_image_format_invalid", str(error)) from error
+
+    @staticmethod
     def _validate_resolution(value: int) -> None:
         if not isinstance(value, int) or isinstance(value, bool):
             raise ExportRunError("export_resolution_unavailable", "Resolution is invalid")
@@ -533,6 +551,7 @@ class ExportRunService:
         add_repeat_prefix: bool,
         sample_seen_mode: str,
         sample_seen_target: int | None,
+        image_format: ExportImageFormat,
         minimum_resolution: int,
         domain_minimum: float | None,
         exclude_exact_visual_duplicates: bool,
@@ -555,6 +574,7 @@ class ExportRunService:
             "add_repeat_prefix": add_repeat_prefix,
             "sample_seen_mode": sample_seen_mode,
             "sample_seen_target": sample_seen_target,
+            "image_format": image_format,
         }
 
     @staticmethod

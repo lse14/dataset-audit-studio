@@ -12,6 +12,7 @@ from dataset_audit_studio.components.dataset_export.contracts import (
     PlannedFile,
 )
 from dataset_audit_studio.core.file_integrity import is_reparse, sha256_file
+from dataset_audit_studio.export.image_conversion import encode_export_image
 
 __all__ = ("ExportTreePublisher",)
 
@@ -113,7 +114,15 @@ class ExportTreePublisher:
             raise RuntimeError(f"Export partial path is unsafe: {part}")
         failure: BaseException | None = None
         try:
-            if file.source_path is not None:
+            if file.transcode_format is not None:
+                if file.source_path is None:
+                    raise RuntimeError(
+                        f"Export transcode source is missing: {file.destination_relative}"
+                    )
+                self._write_content_file(
+                    part, encode_export_image(file.source_path, file.transcode_format)
+                )
+            elif file.source_path is not None:
                 self._copy_source_file(file.source_path, part)
             else:
                 self._write_content_file(part, file.content or b"")

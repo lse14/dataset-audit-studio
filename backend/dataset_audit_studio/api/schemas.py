@@ -76,6 +76,7 @@ class ReviewGateReleaseRequest(TaskControlRequest):
     add_repeat_prefix: Any = None
     sample_seen_mode: Any = None
     sample_seen_target: Any = None
+    image_format: Any = None
     preview_digest: Any = None
 
 
@@ -139,6 +140,7 @@ class ExportRunCreate(BaseModel):
     add_repeat_prefix: Any = None
     sample_seen_mode: Any = None
     sample_seen_target: Any = None
+    image_format: Any = None
     preview_digest: Any = None
 
 
@@ -155,6 +157,7 @@ class ExportRunPreviewRequest(BaseModel):
     add_repeat_prefix: Any = None
     sample_seen_mode: Any = None
     sample_seen_target: Any = None
+    image_format: Any = None
 
 
 class ExportRunPreviewResponse(BaseModel):

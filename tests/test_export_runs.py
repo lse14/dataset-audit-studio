@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib
 import json
 from datetime import timedelta
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -28,6 +30,7 @@ from dataset_audit_studio.database.models import (
 )
 from dataset_audit_studio.export.tree_publisher import ExportTreePublisher
 from dataset_audit_studio.export_runs.errors import ExportRunError
+from dataset_audit_studio.export_runs.planner import ExportRunPlanner
 from dataset_audit_studio.jobs.service import TaskService
 from dataset_audit_studio.scoring.assets import EVIDENCE_SOURCES, PREPROCESSING_VERSIONS
 from dataset_audit_studio.scoring.config import ScoringConfig
@@ -36,6 +39,7 @@ from dataset_audit_studio.workspace.constants import (
     MANUAL_EXCLUSION_CATEGORY,
     MANUAL_EXCLUSION_DECISION,
 )
+from PIL import Image
 from sqlalchemy import event, select
 
 
@@ -62,6 +66,8 @@ def _completed_profile_task(
     tmp_path: Path,
     *,
     resolutions: tuple[int, ...] = (512, 1024),
+    image_bytes: bytes = b"export-run-source",
+    caption: str | None = None,
 ):
     source = tmp_path / "source"
     source.mkdir()
@@ -77,8 +83,9 @@ def _completed_profile_task(
         config=config,
     )
     image = source / "sample.png"
-    image_bytes = b"export-run-source"
     image.write_bytes(image_bytes)
+    if caption is not None:
+        image.with_suffix(".txt").write_text(caption, encoding="utf-8")
     stat = image.stat()
     with database.write_session() as session:
         session.add(
@@ -157,6 +164,7 @@ def _export_run_service():
                     add_repeat_prefix=kwargs.get("add_repeat_prefix", True),
                     sample_seen_mode=kwargs.get("sample_seen_mode", "off"),
                     sample_seen_target=kwargs.get("sample_seen_target"),
+                    image_format=kwargs.get("image_format", "original"),
                 )
                 kwargs["preview_digest"] = preview.preview_digest
             return self._service.create(task_id, **kwargs)
@@ -798,6 +806,259 @@ def test_r1031_preview_and_create_freeze_single_dataset_contract(
     assert run.add_repeat_prefix is True
     assert run.sample_seen_mode == "off"
     assert run.sample_seen_target is None
+
+
+def test_export_run_freezes_image_format_and_defaults_to_original(
+    database, task_service, tmp_path
+) -> None:
+    buffer = BytesIO()
+    image = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+    image.save(buffer, format="PNG")
+    image.close()
+    task = _completed_profile_task(database, task_service, tmp_path, image_bytes=buffer.getvalue())
+    output = tmp_path / "image-format-settings"
+    output.mkdir()
+    service = _export_run_service()(database)
+
+    default_preview = service.preview(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="original",
+    )
+    preview = service.preview(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="webp",
+    )
+    run = service.create(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="webp",
+        preview_digest=preview.preview_digest,
+    )
+
+    assert default_preview.settings["image_format"] == "original"
+    assert preview.settings["image_format"] == "webp"
+    assert run.settings["image_format"] == "webp"
+
+
+def test_export_run_plan_restores_selected_image_format_from_snapshot(
+    database, task_service, tmp_path
+) -> None:
+    buffer = BytesIO()
+    image = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+    image.save(buffer, format="PNG")
+    image.close()
+    task = _completed_profile_task(database, task_service, tmp_path, image_bytes=buffer.getvalue())
+    output = tmp_path / "image-format-snapshot"
+    output.mkdir()
+    service = _export_run_service()(database)
+    preview = service.preview(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="webp",
+    )
+    run = service.create(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="webp",
+        preview_digest=preview.preview_digest,
+    )
+
+    plan = ExportRunPlanner(database).build(run.id).plan
+    image = next(file for file in plan.files if file.kind == "converted_image")
+
+    assert image.transcode_format == "webp"
+
+
+def test_export_run_legacy_snapshot_without_image_format_defaults_to_original(
+    database, task_service, tmp_path
+) -> None:
+    task = _completed_profile_task(database, task_service, tmp_path)
+    output = tmp_path / "legacy-image-format"
+    output.mkdir()
+    service = _export_run_service()(database)
+    run = service.create(task.id, output_root=str(output), minimum_resolution=512)
+
+    with database.write_session() as session:
+        persisted = session.get(models.ExportRun, run.id)
+        assert persisted is not None
+        settings = copy.deepcopy(persisted.settings_json)
+        settings.pop("image_format", None)
+        persisted.settings_json = settings
+        snapshot = copy.deepcopy(persisted.input_snapshot_json)
+        snapshot["settings"].pop("image_format", None)
+        snapshot["summary"]["settings"].pop("image_format", None)
+        for entry in snapshot["files"]:
+            entry.pop("transcode_format", None)
+        persisted.input_snapshot_json = snapshot
+
+    plan = ExportRunPlanner(database).build(run.id).plan
+    image = next(file for file in plan.files if file.kind == "source_image")
+
+    assert image.destination_relative == "1_source/sample.png"
+    assert image.transcode_format is None
+
+
+def test_export_run_rejects_an_unknown_image_format(database, task_service, tmp_path) -> None:
+    task = _completed_profile_task(database, task_service, tmp_path)
+    output = tmp_path / "invalid-image-format"
+    output.mkdir()
+    service = _export_run_service()(database)
+
+    with pytest.raises(ExportRunError) as error:
+        service.preview(
+            task.id,
+            output_root=str(output),
+            minimum_resolution=512,
+            image_format="tiff",
+        )
+
+    assert error.value.code == "export_image_format_invalid"
+
+
+@pytest.mark.parametrize(
+    ("image_format", "suffix"),
+    (("jpeg", ".jpg"), ("png", ".png"), ("webp", ".webp")),
+)
+def test_export_run_converts_images_and_keeps_paired_caption(
+    database,
+    task_service,
+    tmp_path,
+    image_format: str,
+    suffix: str,
+) -> None:
+    source_image = Image.new("RGBA", (2, 1), (0, 0, 0, 0))
+    source_image.putpixel((1, 0), (10, 20, 30, 64))
+    buffer = BytesIO()
+    source_image.save(buffer, format="PNG")
+    source_image.close()
+    source_bytes = buffer.getvalue()
+    task = _completed_profile_task(
+        database,
+        task_service,
+        tmp_path,
+        image_bytes=source_bytes,
+        caption="training caption",
+    )
+    output = tmp_path / f"converted-{image_format}"
+    output.mkdir()
+    service = _export_run_service()(database)
+    preview = service.preview(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format=image_format,
+    )
+    service.create(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format=image_format,
+        preview_digest=preview.preview_digest,
+    )
+    claimed = task_service.claim_next(owner=f"converted-{image_format}", lease_seconds=60)
+    assert claimed is not None
+    completed = _export_run_executor()(database).run(claimed.token)
+
+    exported = output / "1_source" / f"sample{suffix}"
+    assert completed.status == "completed", completed.error_message
+    assert exported.is_file()
+    assert (output / "1_source" / "sample.txt").read_text(encoding="utf-8") == "training caption"
+    assert (Path(task.source_root) / "sample.png").read_bytes() == source_bytes
+    with Image.open(exported) as image:
+        if image_format == "jpeg":
+            assert image.mode == "RGB"
+            assert min(image.getpixel((0, 0))) >= 245
+        else:
+            assert image.mode == "RGBA"
+            assert image.getpixel((1, 0))[3] == 64
+    manifest = json.loads((output / "export-run-manifest.json").read_text(encoding="utf-8"))
+    entry = next(item for item in manifest["files"] if item["path"] == f"1_source/sample{suffix}")
+    assert entry["size"] == exported.stat().st_size
+    assert entry["sha256"] == hashlib.sha256(exported.read_bytes()).hexdigest()
+
+
+def test_export_run_converted_same_stem_images_keep_distinct_paths_and_annotations(
+    database, task_service, tmp_path
+) -> None:
+    source_image = Image.new("RGBA", (2, 1), (0, 0, 0, 0))
+    source_image.putpixel((1, 0), (10, 20, 30, 64))
+    buffer = BytesIO()
+    source_image.save(buffer, format="PNG")
+    source_image.close()
+    task = _completed_profile_task(
+        database,
+        task_service,
+        tmp_path,
+        image_bytes=buffer.getvalue(),
+        caption="shared caption",
+    )
+    source = Path(task.source_root)
+    second = Image.new("RGB", (2, 1), (220, 30, 40))
+    second.save(source / "sample.jpg", format="JPEG", quality=95)
+    second.close()
+    second_path = source / "sample.jpg"
+    second_stat = second_path.stat()
+    with database.write_session() as session:
+        session.add(
+            Sample(
+                id="export-run-sample-jpg",
+                task_id=task.id,
+                relative_path="sample.jpg",
+                source_size=second_stat.st_size,
+                source_mtime_ns=second_stat.st_mtime_ns,
+                source_sha256=hashlib.sha256(second_path.read_bytes()).hexdigest(),
+                pixel_sha256="q" * 64,
+                media_kind="image",
+                artist_scope="__root__",
+                scan_state="valid",
+                encoded_width=1024,
+                encoded_height=1024,
+                display_width=1024,
+                display_height=1024,
+                frame_count=1,
+                is_animated=False,
+                exif_orientation=1,
+                extracted_frame_path=None,
+                export_requires_render=False,
+                phash=None,
+                colorhash=None,
+                scan_algorithm_version="test",
+            )
+        )
+    output = tmp_path / "same-stem-converted"
+    output.mkdir()
+    service = _export_run_service()(database)
+    preview = service.preview(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="jpeg",
+    )
+    service.create(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="jpeg",
+        preview_digest=preview.preview_digest,
+    )
+    claimed = task_service.claim_next(owner="same-stem-converted-worker", lease_seconds=60)
+    assert claimed is not None
+    completed = _export_run_executor()(database).run(claimed.token)
+
+    assert completed.status == "completed", completed.error_message
+    assert (output / "1_source" / "sample.jpg").is_file()
+    assert (output / "1_source" / "sample.png.jpg").is_file()
+    assert (output / "1_source" / "sample.txt").read_text(encoding="utf-8") == "shared caption"
+    assert (
+        output / "1_source" / "sample.png.txt"
+    ).read_text(encoding="utf-8") == "shared caption"
 
 
 def test_r1031_executor_publishes_flat_training_folder_and_contract_manifest(
@@ -1662,6 +1923,55 @@ def test_export_run_recovers_staging_created_before_a_hard_stop(
     assert (output / "1_source" / "sample.png").read_bytes() == b"export-run-source"
 
 
+def test_export_run_recovers_staging_with_selected_image_format(
+    database, task_service, tmp_path
+) -> None:
+    class HardStop(BaseException):
+        pass
+
+    class StopAfterStagingPublisher(ExportTreePublisher):
+        def prepare_directories(self, *args, **kwargs) -> None:
+            super().prepare_directories(*args, **kwargs)
+            raise HardStop("simulated process stop")
+
+    buffer = BytesIO()
+    source_image = Image.new("RGBA", (2, 1), (0, 0, 0, 0))
+    source_image.save(buffer, format="PNG")
+    source_image.close()
+    task = _completed_profile_task(
+        database, task_service, tmp_path, image_bytes=buffer.getvalue()
+    )
+    output = tmp_path / "converted-staging-recovery"
+    output.mkdir()
+    _export_run_service()(database).create(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="webp",
+    )
+    claimed = task_service.claim_next(owner="converted-interrupted-worker", lease_seconds=60)
+    assert claimed is not None
+
+    with pytest.raises(HardStop):
+        _export_run_executor()(database, tree_publisher=StopAfterStagingPublisher()).run(
+            claimed.token
+        )
+    with database.write_session() as session:
+        lease = session.get(WorkerLease, 1)
+        assert lease is not None
+        lease.expires_at = task_service.clock() - timedelta(seconds=1)
+    task_service.recover_stale_leases()
+    resumed = task_service.claim_next(owner="converted-recovery-worker", lease_seconds=60)
+    assert resumed is not None
+
+    completed = _export_run_executor()(database).run(resumed.token)
+
+    assert completed.status == "completed", (completed.error_code, completed.error_message)
+    with Image.open(output / "1_source" / "sample.webp") as exported:
+        assert exported.mode == "RGBA"
+        assert exported.getpixel((0, 0))[3] == 0
+
+
 @pytest.mark.parametrize(
     ("tamper_manifest", "expected_status", "expected_error"),
     (
@@ -1882,7 +2192,11 @@ def test_export_run_api_validates_and_lists_newest_first(tmp_path) -> None:
         first_root.mkdir()
         first_preview = client.post(
             f"/api/tasks/{task.id}/export-runs/preview",
-            json={"output_root": str(first_root), "minimum_resolution": 512},
+            json={
+                "output_root": str(first_root),
+                "minimum_resolution": 512,
+                "image_format": "original",
+            },
         )
         assert first_preview.status_code == 200
         first = client.post(
@@ -1894,6 +2208,7 @@ def test_export_run_api_validates_and_lists_newest_first(tmp_path) -> None:
                 "add_repeat_prefix": True,
                 "sample_seen_mode": "off",
                 "sample_seen_target": None,
+                "image_format": "original",
                 "preview_digest": first_preview.json()["preview_digest"],
             },
         )
@@ -1966,6 +2281,26 @@ def test_r12_export_run_api_validates_new_eligibility_settings_and_forbids_extra
         assert valid.json()["domain_minimum"] is None
         assert valid.json()["exclude_exact_visual_duplicates"] is False
         assert valid.json()["style_outlier_mode"] == "off"
+        invalid_format = client.post(
+            f"/api/tasks/{task.id}/export-runs/preview",
+            json={
+                "output_root": str(output),
+                "minimum_resolution": 512,
+                "image_format": "tiff",
+            },
+        )
+        assert invalid_format.status_code == 422
+        assert invalid_format.json()["code"] == "export_image_format_invalid"
+        invalid_format_type = client.post(
+            f"/api/tasks/{task.id}/export-runs/preview",
+            json={
+                "output_root": str(output),
+                "minimum_resolution": 512,
+                "image_format": ["webp"],
+            },
+        )
+        assert invalid_format_type.status_code == 422
+        assert invalid_format_type.json()["code"] == "export_image_format_invalid"
 
 
 def test_local_worker_dispatches_export_claim_without_task_runner(tmp_path) -> None:
