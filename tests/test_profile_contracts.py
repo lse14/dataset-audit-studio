@@ -33,12 +33,8 @@ def test_core_profile_contract_preserves_enum_values_and_constraints() -> None:
         assert is_dataclass(constraints)
         assert constraints.scope_mode == scope_mode
         assert constraints.style_enabled is style_enabled
-        assert constraints.semantic_enabled is (
-            profile == contracts.DatasetProfile.CHARACTER_CONCEPT
-        )
-        assert constraints.hierarchy_enabled is (
-            profile == contracts.DatasetProfile.CHARACTER_CONCEPT
-        )
+        assert constraints.semantic_enabled is True
+        assert constraints.hierarchy_enabled is True
         assert constraints.policy_mode == "report_only"
         assert constraints.active_views == ("broad",)
         with pytest.raises(FrozenInstanceError):
@@ -139,7 +135,7 @@ def test_preset_profile_specs_and_materialization_remain_stable() -> None:
         materialized = materialize_profile(profile)
         assert materialized["profile"] == profile
         assert "selection.three_stage" not in materialized["components"]
-        semantic_enabled = profile == "character_concept"
+        semantic_enabled = True
         assert (
             materialized["components"]["embedding.semantic"]["enabled"]
             is semantic_enabled
