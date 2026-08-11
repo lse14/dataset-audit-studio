@@ -378,8 +378,8 @@ def test_hierarchy_persists_leaf_scoped_semantic_duplicate_evidence(
     }
     assert all(row.source == "semantic_duplicate_siglip2_v1" for row in evidence)
     assert all(row.review_only is True for row in evidence)
-    assert all(row.threshold_number == pytest.approx(0.985) for row in evidence)
-    assert all(0.985 <= float(row.value_number or 0.0) <= 1.0 for row in evidence)
+    assert all(row.threshold_number == pytest.approx(0.92) for row in evidence)
+    assert all(0.92 <= float(row.value_number or 0.0) <= 1.0 for row in evidence)
     assert all(
         {
             "model_id",

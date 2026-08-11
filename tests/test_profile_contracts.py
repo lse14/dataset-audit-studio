@@ -146,6 +146,19 @@ def test_preset_profile_specs_and_materialization_remain_stable() -> None:
         )
 
 
+def test_builtin_profiles_use_high_recall_semantic_duplicate_candidates() -> None:
+    from dataset_audit_studio.app.profile_materialization import materialize_profile
+
+    for profile in ("artist_concept", "character_concept", "general"):
+        materialized = materialize_profile(profile)
+        assert (
+            materialized["components"]["cluster.hierarchy"]["config"][
+                "semantic_duplicate_threshold"
+            ]
+            == 0.92
+        )
+
+
 def test_character_profile_owns_required_consistency_controls() -> None:
     contracts = _contracts()
 

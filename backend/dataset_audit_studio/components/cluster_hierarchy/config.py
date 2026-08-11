@@ -14,7 +14,7 @@ class HierarchyConfig(BaseModel):
     max_branching: int = Field(default=32, ge=2, le=64)
     kmeans_iterations: int = Field(default=25, ge=5, le=200)
     seed: int = Field(default=20260717, ge=0, le=2**31 - 1)
-    semantic_duplicate_threshold: float = Field(default=0.985, ge=0.8, le=1.0)
+    semantic_duplicate_threshold: float = Field(default=0.92, ge=0.8, le=1.0)
 
     @model_validator(mode="after")
     def validate_hierarchy(self) -> HierarchyConfig:
