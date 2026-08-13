@@ -88,6 +88,7 @@ const utilityPages: PageDefinition[] = [
 ]
 
 const pages = [...primaryPages, ...auditPages, exportPage, ...utilityPages]
+const auditPageIds = new Set<PageId>(auditPages.map((item) => item.id))
 const legacyPageAliases: Record<string, PageId> = {
   guide: 'tasks',
   reviews: 'risks',
@@ -184,6 +185,10 @@ export default function App() {
 
     const reviewPrompt = createReviewGatePrompt(selectedTask)
     if (reviewPrompt) {
+      if (auditPageIds.has(page)) {
+        setStatusPrompt(null)
+        return
+      }
       if (seenStatusPrompts.current.has(reviewPrompt.key)) {
         setStatusPrompt((current) =>
           current && current.taskId === reviewPrompt.taskId && current.key === reviewPrompt.key
@@ -224,7 +229,7 @@ export default function App() {
     }
 
     setStatusPrompt(null)
-  }, [selectedTask])
+  }, [page, selectedTask])
 
   useEffect(() => {
     const unlock = () => unlockNotificationSound()
@@ -409,6 +414,7 @@ export default function App() {
             ) : null}
             {page === 'duplicates' ? (
               <DuplicatesPage
+                key={selectedTaskId ?? 'none'}
                 folder={selectedFolder}
                 folders={folders}
                 notify={notify}
@@ -418,6 +424,7 @@ export default function App() {
             ) : null}
             {page === 'aesthetics' ? (
               <AestheticsPage
+                key={selectedTaskId ?? 'none'}
                 folder={selectedFolder}
                 folders={folders}
                 notify={notify}
@@ -427,6 +434,7 @@ export default function App() {
             ) : null}
             {page === 'risks' ? (
               <RisksPage
+                key={selectedTaskId ?? 'none'}
                 folder={selectedFolder}
                 folders={folders}
                 notify={notify}

@@ -294,7 +294,11 @@ class SemanticClusterer:
             if runtime is not None:
                 runtime.close()
                 runtime = None
-            embeddings = self._load_embeddings(samples, registered_shards)
+            embeddings = (
+                self._load_embeddings(samples, registered_shards)
+                if config.sae.enabled and len(samples)
+                else None
+            )
             character_consistency = (
                 self.repository.character_consistency_metadata(registered_shards)
                 if character_consistency_enabled and registered_shards
@@ -460,7 +464,14 @@ class SemanticClusterer:
             )
             for scope_index in range(next_scope, len(scopes)):
                 scope = scopes[scope_index]
-                local_embeddings = embeddings[list(scope.sample_indices)]
+                if embeddings is None:
+                    local_embeddings = self.repository.load_embeddings_for_sample_ids(
+                        tuple(samples[index].sample_id for index in scope.sample_indices),
+                        registered_shards,
+                        self.shards.load,
+                    )
+                else:
+                    local_embeddings = embeddings[list(scope.sample_indices)]
                 local_keys = tuple(samples[index].relative_path for index in scope.sample_indices)
                 try:
                     nodes = hierarchical_clusters(

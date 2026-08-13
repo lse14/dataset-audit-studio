@@ -25,7 +25,7 @@ class ScanConfig(BaseModel):
 
     recursive: bool = True
     resolutions: tuple[int, ...] = DEFAULT_RESOLUTIONS
-    batch_size: int = Field(default=64, ge=1, le=1024)
+    batch_size: int = Field(default=64, ge=1, le=4096)
     cpu_workers: int = Field(default=4, ge=1, le=16)
     bucket_step: int = Field(default=64, ge=8, le=256)
     maximum_aspect_ratio: float = Field(default=4.0, ge=1.0, le=20.0)

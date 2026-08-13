@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -16,11 +17,14 @@ from dataset_audit_studio.export.tree_publisher import ExportTreePublisher
 from dataset_audit_studio.export_runs.errors import ExportRunError
 from dataset_audit_studio.export_runs.planner import ExportRunPlanner, RunPlan
 from dataset_audit_studio.export_runs.service import ExportRunService
+from dataset_audit_studio.export_runs.transcode_cache import cached_encode_export_image
 from dataset_audit_studio.export_runs.types import ExportRunView
 from dataset_audit_studio.jobs.types import ExportRunToken
 
 _LEASE_SECONDS = 300
 _MANIFEST_NAME = "export-run-manifest.json"
+HEARTBEAT_FILE_INTERVAL = 32
+HEARTBEAT_SECONDS = 5.0
 
 
 def _aware(value: datetime) -> datetime:
@@ -36,10 +40,16 @@ class ExportRunExecutor:
         *,
         tree_publisher: ExportTreePublisher | None = None,
         project_root: Path | None = None,
+        heartbeat_file_interval: int = HEARTBEAT_FILE_INTERVAL,
+        heartbeat_seconds: float = HEARTBEAT_SECONDS,
     ) -> None:
         self.database = database
-        self.tree_publisher = tree_publisher or ExportTreePublisher()
+        self.tree_publisher = tree_publisher or ExportTreePublisher(
+            encode_image=cached_encode_export_image
+        )
         self.planner = ExportRunPlanner(database, project_root=project_root)
+        self._heartbeat_file_interval = max(1, heartbeat_file_interval)
+        self._heartbeat_seconds = max(0.0, heartbeat_seconds)
 
     def run(self, token: ExportRunToken) -> ExportRunView:
         stage = "planning"
@@ -76,9 +86,20 @@ class ExportRunExecutor:
             next_file = self._next_file(run, full_plan, staging_root)
             stage = "copying"
             self._set_copying(token, staging_root, next_file, full_plan, manifest_sha256)
-            for index in range(next_file, len(full_plan.files)):
+            persisted = next_file
+            last_heartbeat = time.monotonic()
+            total_files = len(full_plan.files)
+            for index in range(next_file, total_files):
                 self.tree_publisher.write_file(staging_root, full_plan.files[index])
-                self._set_copying(token, staging_root, index + 1, full_plan, manifest_sha256)
+                done = index + 1
+                if (
+                    done == total_files
+                    or done - persisted >= self._heartbeat_file_interval
+                    or time.monotonic() - last_heartbeat >= self._heartbeat_seconds
+                ):
+                    self._set_copying(token, staging_root, done, full_plan, manifest_sha256)
+                    persisted = done
+                    last_heartbeat = time.monotonic()
 
             stage = "staging_verification"
             self._set_status(token, ExportRunStatus.VERIFYING.value, full_plan)

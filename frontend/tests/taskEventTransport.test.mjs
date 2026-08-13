@@ -12,7 +12,9 @@ const eventTypes = [
   'task_queued',
   'worker_claimed',
   'batch_committed',
+  'phase_process_ready',
   'phase_completed',
+  'watermark_review_threshold_changed',
   'pause_requested',
   'task_paused',
   'task_resumed',
@@ -21,6 +23,8 @@ const eventTypes = [
   'task_terminated',
   'task_failed',
   'review_gate_released',
+  'rewrite_preview_confirmed',
+  'legacy_task_rejected',
   'stale_worker_recovered',
 ]
 
@@ -145,7 +149,7 @@ test('event refresh hook orchestrates the canonical task-event transport for App
   assert.doesNotMatch(hook, /\bEventSource\b/)
   assert.doesNotMatch(hook, /events\/stream/)
   assert.doesNotMatch(hook, /eventTypes/)
-  assert.doesNotMatch(hook, /task_created|config_changed|task_queued|worker_claimed|batch_committed|phase_completed|pause_requested|task_paused|task_resumed|terminate_requested|task_force_terminated|task_terminated|task_failed|review_gate_released|stale_worker_recovered/)
+  assert.doesNotMatch(hook, /task_created|config_changed|task_queued|worker_claimed|batch_committed|phase_process_ready|phase_completed|watermark_review_threshold_changed|pause_requested|task_paused|task_resumed|terminate_requested|task_force_terminated|task_terminated|task_failed|review_gate_released|rewrite_preview_confirmed|legacy_task_rejected|stale_worker_recovered/)
   assert.match(hook, /from '\.\.\/transport\/taskEvents'/)
   assert.match(hook, /openStream: openTaskEventStream/)
   assert.match(hook, /from '\.\.\/taskRefreshPolicy'/)

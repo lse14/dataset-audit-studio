@@ -31,15 +31,23 @@ def test_directory_selection_api_returns_selection_and_cancellation(
     selected = tmp_path / "selected"
     selected.mkdir()
     results = iter((str(selected), None))
-    calls: list[tuple[Path, str, str | None]] = []
+    calls: list[tuple[Path, str, str | None, object | None]] = []
 
-    def select_directory(*, project_root: Path, purpose: str, initial_path: str | None):
-        calls.append((project_root, purpose, initial_path))
+    def select_directory(
+        *,
+        project_root: Path,
+        purpose: str,
+        initial_path: str | None,
+        picker_host: object | None = None,
+    ):
+        calls.append((project_root, purpose, initial_path, picker_host))
         return next(results)
 
     monkeypatch.setattr(workspace_api, "select_windows_directory", select_directory)
 
     with TestClient(app) as client:
+        picker_host = object()
+        app.state.native_picker_host = picker_host
         selection = client.post(
             "/api/filesystem/select-directory",
             json={"purpose": "source", "initial_path": str(tmp_path)},
@@ -54,8 +62,8 @@ def test_directory_selection_api_returns_selection_and_cancellation(
     assert cancellation.status_code == 200
     assert cancellation.json() == {"path": None, "cancelled": True}
     assert calls == [
-        (tmp_path / "project", "source", str(tmp_path)),
-        (tmp_path / "project", "output", None),
+        (tmp_path / "project", "source", str(tmp_path), picker_host),
+        (tmp_path / "project", "output", None, picker_host),
     ]
 
 
@@ -67,15 +75,23 @@ def test_file_selection_api_returns_selected_model_file_and_cancellation(
     selected = tmp_path / "replacement.safetensors"
     selected.write_bytes(b"model")
     results = iter((str(selected), None))
-    calls: list[tuple[Path, str, str | None]] = []
+    calls: list[tuple[Path, str, str | None, object | None]] = []
 
-    def select_file(*, project_root: Path, purpose: str, initial_path: str | None):
-        calls.append((project_root, purpose, initial_path))
+    def select_file(
+        *,
+        project_root: Path,
+        purpose: str,
+        initial_path: str | None,
+        picker_host: object | None = None,
+    ):
+        calls.append((project_root, purpose, initial_path, picker_host))
         return next(results)
 
     monkeypatch.setattr(workspace_api, "select_windows_file", select_file)
 
     with TestClient(app) as client:
+        picker_host = object()
+        app.state.native_picker_host = picker_host
         selection = client.post(
             "/api/filesystem/select-file",
             json={"purpose": "model", "initial_path": str(selected)},
@@ -90,8 +106,8 @@ def test_file_selection_api_returns_selected_model_file_and_cancellation(
     assert cancellation.status_code == 200
     assert cancellation.json() == {"path": None, "cancelled": True}
     assert calls == [
-        (tmp_path / "project", "model", str(selected)),
-        (tmp_path / "project", "model", None),
+        (tmp_path / "project", "model", str(selected), picker_host),
+        (tmp_path / "project", "model", None, picker_host),
     ]
 
 

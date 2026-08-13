@@ -10,4 +10,4 @@ class ClipFeatureConfig(BaseModel):
 
     device: DeviceRequest = "auto"
     precision: Precision = "float32"
-    batch_size: int = Field(default=4, ge=1, le=64)
+    batch_size: int = Field(default=4, ge=1, le=256)

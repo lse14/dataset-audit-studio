@@ -10,7 +10,7 @@ class StyleConfig(BaseModel):
 
     enabled: bool = True
     device: Literal["auto", "cuda", "cpu"] = "auto"
-    batch_size: int = Field(default=4, ge=1, le=32)
+    batch_size: int = Field(default=4, ge=1, le=64)
     image_size: Literal[224] = 224
     minimum_scope_size: int = Field(default=8, ge=2, le=10_000)
     max_iterations: int = Field(default=3, ge=1, le=3)

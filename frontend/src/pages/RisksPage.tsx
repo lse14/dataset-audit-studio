@@ -1,5 +1,6 @@
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Eye, ShieldAlert } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   listCuratedReviews,
@@ -42,6 +43,7 @@ export function RisksPage({ task, overview, folders, folder, onFolderChange, not
   const [detailError, setDetailError] = useState<string | null>(null)
   const [mediaSampleId, setMediaSampleId] = useState<string | null>(null)
   const [revision, setRevision] = useState(0)
+  const listParent = useRef<HTMLDivElement>(null)
   const limit = 100
 
   useEffect(() => {
@@ -100,6 +102,12 @@ export function RisksPage({ task, overview, folders, folder, onFolderChange, not
   }, [code, data?.items, detailSampleId, severity, task?.id])
 
   const items = data?.items ?? []
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => listParent.current,
+    estimateSize: () => 132,
+    overscan: 8,
+  })
   const selectedIds = useMemo(() => [...selected], [selected])
   const allPageSelected = items.length > 0 && items.every((item) => selected.has(item.sample_id))
   const toggleSample = (sampleId: string) => setSelected((values) => {
@@ -171,7 +179,7 @@ export function RisksPage({ task, overview, folders, folder, onFolderChange, not
       {error ? <ErrorBlock message={error} /> : null}
       {loading && items.length === 0 ? <LoadingBlock label="正在读取风险图片" /> : null}
       {!loading && !error && data && items.length === 0 ? <EmptyState title="当前筛选没有风险证据" /> : null}
-      {items.length > 0 ? <section className="risk-list">{items.map((item) => { const active = decisions.get(item.sample_id); return <article className="risk-row audit-row" key={item.sample_id} onClick={() => { setDetail(null); setDetailSampleId(item.sample_id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetail(null); setDetailSampleId(item.sample_id) } }} role="button" tabIndex={0}><span className="row-check" onClick={(event) => event.stopPropagation()}><input aria-label={`选择 ${item.relative_path}`} checked={selected.has(item.sample_id)} onChange={() => toggleSample(item.sample_id)} type="checkbox" /></span><Thumbnail alt={item.relative_path} onClick={() => setMediaSampleId(item.sample_id)} src={sampleThumbnailUrl(task.id, item.sample_id, 224)} /><div><strong title={item.relative_path}>{item.relative_path}</strong><span title={item.evidence_codes.join('、')}>{item.evidence_codes.join('、')}</span><small>{item.evidence_count.toLocaleString()} 条证据</small></div><span className={`severity ${item.highest_severity}`}>{item.highest_severity}</span>{active ? <StatusPill value={active.decision} /> : <span>状态不可用</span>}<Eye aria-label="查看证据" size={17} /></article> })}</section> : null}
+      {items.length > 0 ? <section className="risk-list" ref={listParent}><div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>{virtualizer.getVirtualItems().map((row) => { const item = items[row.index]; const active = decisions.get(item.sample_id); return <article className="risk-row audit-row" key={item.sample_id} onClick={() => { setDetail(null); setDetailSampleId(item.sample_id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetail(null); setDetailSampleId(item.sample_id) } }} role="button" style={{ transform: `translateY(${row.start}px)` }} tabIndex={0}><span className="row-check" onClick={(event) => event.stopPropagation()}><input aria-label={`选择 ${item.relative_path}`} checked={selected.has(item.sample_id)} onChange={() => toggleSample(item.sample_id)} type="checkbox" /></span><Thumbnail alt={item.relative_path} onClick={() => setMediaSampleId(item.sample_id)} src={sampleThumbnailUrl(task.id, item.sample_id, 224)} /><div><strong title={item.relative_path}>{item.relative_path}</strong><span title={item.evidence_codes.join('、')}>{item.evidence_codes.join('、')}</span><small>{item.evidence_count.toLocaleString()} 条证据</small></div><span className={`severity ${item.highest_severity}`}>{item.highest_severity}</span>{active ? <StatusPill value={active.decision} /> : <span>状态不可用</span>}<Eye aria-label="查看证据" size={17} /></article> })}</div></section> : null}
       <Pagination limit={limit} offset={offset} onChange={(nextOffset) => { setSelected(new Set()); setOffset(nextOffset) }} total={data?.total ?? 0} />
       <ConfirmDialog busy={busy} confirmLabel={confirm?.label ?? '确认'} danger={confirm?.danger} detail={`本次只修改明确勾选的 ${selected.size} 项，可再次选择并改回其他状态。`} onCancel={() => setConfirm(null)} onConfirm={() => void submitDecision()} open={confirm !== null} title="确认批量复核" />
       <ModalRiskDetail detail={detail} detailError={detailError} detailLoading={detailLoading} onClose={() => setDetailSampleId(null)} onOpenMedia={setMediaSampleId} open={detailSampleId !== null} taskId={task.id} />

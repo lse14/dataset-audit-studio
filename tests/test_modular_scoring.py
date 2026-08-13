@@ -398,23 +398,23 @@ def test_community_ai_component_scores_decoded_images_not_clip_features(
         tmp_path / "source",
         config=_community_config(),
     )
-    clip = _ClipRuntime()
     community = _CommunityAIRuntime()
     service = ModularScoringComponentService(
         task_service,
         runtime_factories={
-            "feature.clip_l14": lambda _config, _assets: clip,
+            "feature.clip_l14": lambda *_args: pytest.fail(
+                "CF-only scoring must not load CLIP"
+            ),
             "detect.ai": lambda _config, _assets: community,
         },
         project_root=tmp_path,
     )
     token = _claim(task_service, "community")
-    order = ("feature.clip_l14", "detect.ai")
-    service.run(token, _assets(tmp_path), component_id=order[0], component_order=order)
+    order = ("detect.ai",)
     summary = service.run(
         token,
         _assets(tmp_path),
-        component_id=order[1],
+        component_id=order[0],
         component_order=order,
     )
 
@@ -987,8 +987,62 @@ def test_community_registry_plan_requests_only_the_community_model() -> None:
     plan = build_scoring_component_plan(_community_config())
 
     assert [(item.component_id, item.model_ids) for item in plan] == [
+        ("detect.ai", ("community_forensics_model_384",)),
+    ]
+    assert all("openai_clip_vit_l14" not in item.model_ids for item in plan)
+
+
+def test_community_registry_plan_keeps_explicit_clip_component() -> None:
+    config = _community_config()
+    config["components"]["feature.clip_l14"]["enabled"] = True
+
+    plan = build_scoring_component_plan(config)
+
+    assert [(item.component_id, item.model_ids) for item in plan] == [
         ("feature.clip_l14", ("openai_clip_vit_l14",)),
         ("detect.ai", ("community_forensics_model_384",)),
+    ]
+
+
+def test_community_ai_does_not_request_clip_capabilities() -> None:
+    config = ScoringConfig.from_task_config(_community_config())
+
+    assert config.enabled_components == ("ai",)
+    assert config.ai.model_id == "community_forensics_model_384"
+    assert ModularScoringComponentService._clip_capabilities(config) == ()
+
+
+def test_community_coordinator_does_not_wait_for_clip(
+    database: Database,
+    task_service: TaskService,
+    tmp_path: Path,
+) -> None:
+    _prepare_task(
+        database,
+        task_service,
+        tmp_path / "source",
+        config=_community_config(),
+        colors=(),
+    )
+    requested: list[tuple[str, tuple[str, ...]]] = []
+
+    def wait_for_assets(_token, item):
+        requested.append((item.component_id, item.model_ids))
+        return _assets(tmp_path)
+
+    summary = ModularScoringCoordinator(
+        database,
+        task_service,
+        model_service=None,
+        component_asset_waiter=wait_for_assets,
+        project_root=tmp_path,
+        poll_seconds=0.01,
+    ).run(_claim(task_service, "community-coordinator"))
+
+    assert summary.final_status == TaskStatus.QUEUED.value
+    assert requested == [("detect.ai", ("community_forensics_model_384",))]
+    assert [item["runtime_model_ids"] for item in summary.component_summaries] == [
+        ["community_forensics_model_384"]
     ]
 
 

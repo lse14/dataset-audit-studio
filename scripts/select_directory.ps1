@@ -2,7 +2,8 @@ param(
     [string]$InitialPath = "",
     [string]$Description = "Select a folder",
     [ValidateSet("Directory", "File")]
-    [string]$Mode = "Directory"
+    [string]$Mode = "Directory",
+    [switch]$Server
 )
 
 Set-StrictMode -Version Latest
@@ -238,40 +239,92 @@ public static class NativeWindowsPicker
 }
 '@
 
-# The backend starts this script as a detached, window-less child process, so there is no
-# window of ours to own the dialog. Parenting it to whatever happened to be in the
-# foreground would make an unrelated application appear to be blocked, so use a hidden
-# top-most owner instead: it keeps the dialog above the browser without claiming a window
-# that is not ours.
-$owner = New-Object System.Windows.Forms.Form
-$owner.TopMost = $true
-$owner.ShowInTaskbar = $false
-$owner.Opacity = 0
-$owner.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
-$owner.Size = New-Object System.Drawing.Size 1, 1
-$owner.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
-$owner.Location = New-Object System.Drawing.Point -32000, -32000
+function ConvertTo-PickerBase64([string]$Value) {
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Value)
+    return [System.Convert]::ToBase64String($bytes)
+}
 
-try {
-    # Shown off-screen so the owner HWND really exists and really is top-most; an owner
-    # that was never shown would not lift the dialog above the browser.
-    $owner.Show()
-    $selectedPath = [NativeWindowsPicker]::Show(
-        $Mode,
-        $Description,
-        $owner.Handle,
-        $InitialPath
-    )
+function Show-NativePicker(
+    [string]$PickerMode,
+    [string]$PickerDescription,
+    [string]$PickerInitialPath
+) {
+    # The backend starts this script as a detached, window-less child process, so there is no
+    # window of ours to own the dialog. Parenting it to whatever happened to be in the
+    # foreground would make an unrelated application appear to be blocked, so use a hidden
+    # top-most owner instead: it keeps the dialog above the browser without claiming a window
+    # that is not ours.
+    $owner = New-Object System.Windows.Forms.Form
+    $owner.TopMost = $true
+    $owner.ShowInTaskbar = $false
+    $owner.Opacity = 0
+    $owner.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $owner.Size = New-Object System.Drawing.Size 1, 1
+    $owner.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+    $owner.Location = New-Object System.Drawing.Point -32000, -32000
 
-    if ($null -ne $selectedPath) {
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes($selectedPath)
-        $encoded = [System.Convert]::ToBase64String($bytes)
-        [System.Console]::Out.WriteLine("SELECTED:{0}", $encoded)
+    try {
+        # Shown off-screen so the owner HWND really exists and really is top-most; an owner
+        # that was never shown would not lift the dialog above the browser.
+        $owner.Show()
+        $selectedPath = [NativeWindowsPicker]::Show(
+            $PickerMode,
+            $PickerDescription,
+            $owner.Handle,
+            $PickerInitialPath
+        )
+
+        if ($null -ne $selectedPath) {
+            return "SELECTED:$(ConvertTo-PickerBase64 $selectedPath)"
+        }
+        return "CANCELLED"
     }
-    else {
-        [System.Console]::Out.WriteLine("CANCELLED")
+    finally {
+        $owner.Dispose()
     }
 }
-finally {
-    $owner.Dispose()
+
+if ($Server) {
+    [System.Console]::Out.WriteLine("READY")
+    while ($true) {
+        $line = [System.Console]::In.ReadLine()
+        if ($null -eq $line -or $line -eq "QUIT") {
+            break
+        }
+        try {
+            if (-not $line.StartsWith("REQUEST:")) {
+                throw "Windows directory selection request is invalid."
+            }
+            $payload = $line.Substring("REQUEST:".Length)
+            $json = [System.Text.Encoding]::UTF8.GetString(
+                [System.Convert]::FromBase64String($payload)
+            )
+            $request = $json | ConvertFrom-Json
+            $requestMode = [string]$request.mode
+            if ($requestMode -ne "Directory" -and $requestMode -ne "File") {
+                throw "Windows directory selection mode is invalid."
+            }
+            $requestDescription = [string]$request.description
+            if ([string]::IsNullOrWhiteSpace($requestDescription)) {
+                throw "Windows directory selection description is invalid."
+            }
+            $requestInitialPath = if ($null -eq $request.initial_path) {
+                ""
+            }
+            else {
+                [string]$request.initial_path
+            }
+            [System.Console]::Out.WriteLine(
+                (Show-NativePicker $requestMode $requestDescription $requestInitialPath)
+            )
+        }
+        catch {
+            [System.Console]::Out.WriteLine(
+                "ERROR:$(ConvertTo-PickerBase64 $_.Exception.Message)"
+            )
+        }
+    }
+    exit 0
 }
+
+[System.Console]::Out.WriteLine((Show-NativePicker $Mode $Description $InitialPath))

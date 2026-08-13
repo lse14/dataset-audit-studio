@@ -129,3 +129,16 @@ test('App delegates bootstrap work while retaining selected-task, storage, and t
   assert.match(app, /useTaskEventRefresh\(\{/)
   assert.match(app, /\[selectedTaskId, setSelectedTaskId\]/)
 })
+
+test('audit pages remount when selected task changes', async () => {
+  const app = await readFile(APP_PATH, 'utf8')
+  const remountKey = /key=\{selectedTaskId \?\? 'none'\}/
+
+  for (const page of ['RisksPage', 'StylePage', 'DuplicatesPage', 'AestheticsPage', 'ExportsPage']) {
+    assert.match(
+      app,
+      new RegExp(`<${page}[\\s\\S]*?${remountKey.source}`),
+      `${page} should remount on task selection changes`,
+    )
+  }
+})

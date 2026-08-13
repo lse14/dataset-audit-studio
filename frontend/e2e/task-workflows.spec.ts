@@ -469,6 +469,11 @@ async function installApiMock(page: Page, options: ApiMockOptions = {}) {
   }
 }
 
+async function dismissReviewPrompt(page: Page) {
+  const button = page.getByRole('button', { name: '稍后处理' })
+  if (await button.isVisible()) await button.click()
+}
+
 test('creates a task with source annotation retention disabled', async ({ page }) => {
   const api = await installApiMock(page)
 
@@ -506,7 +511,7 @@ test('submits an approved exclusion for the selected risk sample', async ({ page
   const api = await installApiMock(page)
 
   await page.goto('/#risks')
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await dismissReviewPrompt(page)
   await page.getByLabel('选择 sample.png', { exact: true }).check()
   await page.getByRole('button', { name: '排除', exact: true }).click()
   await page.getByRole('button', { name: '批准排除' }).click()
@@ -519,6 +524,26 @@ test('submits an approved exclusion for the selected risk sample', async ({ page
   })
 })
 
+test('does not cover direct audit selection with an evidence review prompt', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('dataset-audit-selected-task-v2', 'task-1')
+  })
+  await installApiMock(page)
+
+  for (const [route, label] of [
+    ['#risks', '选择 sample.png'],
+    ['#style', '选择 outlier.png'],
+    ['#duplicates', '选择 artist-a/alpha.png'],
+    ['#aesthetics', '选择 artist-a/candidate.png'],
+  ] as const) {
+    await page.goto(`/${route}`)
+    await expect(page.getByLabel(label, { exact: true })).toBeVisible()
+    await expect(page.getByRole('dialog', { name: '任务等待人工复核' })).toHaveCount(0)
+    await page.getByLabel(label, { exact: true }).check()
+    await expect(page.getByText('已选 1', { exact: true })).toBeVisible()
+  }
+})
+
 test('compares normal style context and reuses style decisions without mobile overflow', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem('dataset-audit-selected-task-v2', 'task-1')
@@ -526,7 +551,7 @@ test('compares normal style context and reuses style decisions without mobile ov
   const api = await installApiMock(page)
 
   await page.goto('/#style')
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await dismissReviewPrompt(page)
   await expect.poll(() => api.styleAuditRequests.length).toBeGreaterThan(0)
   expect(new Set(api.styleAuditRequests)).toEqual(new Set([
     '/api/tasks/task-1/reviews/style/audit?offset=0&limit=100',
@@ -579,7 +604,7 @@ test('keeps a delayed prior task style audit from replacing the selected task', 
   })
 
   await page.goto('/#style')
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await dismissReviewPrompt(page)
   await expect.poll(() => api.styleAuditRequests.some((path) => path.includes('/task-1/'))).toBe(true)
   await page.getByLabel('任务').selectOption('task-2')
   await expect(page.getByText('task-2-current.png', { exact: true })).toBeVisible()
@@ -623,7 +648,7 @@ test('shows folder empty and style audit error states', async ({ page }) => {
   })
 
   await page.goto('/#style')
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await dismissReviewPrompt(page)
   await page.getByLabel('子文件夹筛选', { exact: true }).selectOption('empty-folder')
   await expect(page.getByText('当前子文件夹没有画风证据', { exact: true })).toBeVisible()
 
@@ -663,7 +688,7 @@ test('audits all aesthetic samples by backend bucket and only reuses curated dec
   await page.goto('/#aesthetics')
   await expect(page).toHaveTitle('Dataset Audit Studio')
   await expect(page.locator('#root')).not.toBeEmpty()
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await dismissReviewPrompt(page)
   await expect.poll(() => api.aestheticAuditRequests.length).toBeGreaterThan(0)
   expect(api.aestheticAuditRequests).toContain(
     '/api/tasks/task-1/reviews/aesthetic/audit?offset=0&limit=100',
@@ -745,7 +770,7 @@ test('keeps a delayed prior task aesthetic audit from replacing the selected tas
   })
 
   await page.goto('/#aesthetics')
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await dismissReviewPrompt(page)
   await expect.poll(() => api.aestheticAuditRequests.some((path) => path.includes('/task-1/'))).toBe(true)
   await page.getByLabel('任务').selectOption('task-2')
   const deferPrompt = page.getByRole('button', { name: '稍后处理' })
@@ -802,7 +827,7 @@ test('shows folder empty and aesthetic audit error states', async ({ page }) => 
   })
 
   await page.goto('/#aesthetics')
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await dismissReviewPrompt(page)
   await page.getByLabel('子文件夹筛选', { exact: true }).selectOption('empty-folder')
   await expect(page.getByText('当前子文件夹没有美学结果', { exact: true })).toBeVisible()
 
@@ -873,7 +898,7 @@ test('automatically selects lower-resolution duplicate members for batch exclusi
   })
 
   await page.goto('/#duplicates')
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await dismissReviewPrompt(page)
   await expect(page.getByText('artist-a/largest.png', { exact: true })).toBeVisible()
   await page.getByLabel('本页自动选择可排除成员', { exact: true }).check()
   await expect(page.getByText('已选 2', { exact: true })).toBeVisible()
@@ -906,7 +931,7 @@ test('audits complete visual and semantic duplicate groups without allowing a fi
   })
 
   await page.goto('/#duplicates')
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await dismissReviewPrompt(page)
   await expect.poll(() => api.duplicateAuditRequests.length).toBeGreaterThan(0)
   expect(api.duplicateAuditRequests).toContain(
     '/api/tasks/task-1/reviews/duplicates/audit?evidence_type=exact_duplicate&offset=0&limit=100',
@@ -978,7 +1003,7 @@ test('shows existing fully excluded groups as recoverable and isolates delayed d
   })
 
   await page.goto('/#duplicates')
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await dismissReviewPrompt(page)
   await expect.poll(() => api.duplicateAuditRequests.some((path) => path.includes('/task-1/'))).toBe(true)
   await page.getByLabel('任务').selectOption('task-2')
   const deferPrompt = page.getByRole('button', { name: '稍后处理' })
@@ -1030,7 +1055,7 @@ test('shows folder empty and duplicate audit error states', async ({ page }) => 
   })
 
   await page.goto('/#duplicates')
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await dismissReviewPrompt(page)
   await page.getByLabel('子文件夹筛选', { exact: true }).selectOption('empty-folder')
   await expect(page.getByText('当前子文件夹没有重复组', { exact: true })).toBeVisible()
   await page.getByLabel('任务').selectOption('task-2')

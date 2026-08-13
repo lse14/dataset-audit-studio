@@ -4,7 +4,9 @@ const taskEventTypes = [
   'task_queued',
   'worker_claimed',
   'batch_committed',
+  'phase_process_ready',
   'phase_completed',
+  'watermark_review_threshold_changed',
   'pause_requested',
   'task_paused',
   'task_resumed',
@@ -13,6 +15,8 @@ const taskEventTypes = [
   'task_terminated',
   'task_failed',
   'review_gate_released',
+  'rewrite_preview_confirmed',
+  'legacy_task_rejected',
   'stale_worker_recovered',
 ] as const
 

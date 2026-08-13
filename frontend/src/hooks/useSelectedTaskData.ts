@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { listComponentRuns } from '../clients/components'
 import { getTask, listTaskEvents } from '../clients/tasks'
@@ -26,8 +26,12 @@ export function useSelectedTaskData({
   const [events, setEvents] = useState<TaskEvent[]>([])
   const [componentRuns, setComponentRuns] = useState<ComponentRun[]>([])
   const [taskDataTaskId, setTaskDataTaskId] = useState<string | null>(null)
+  const requestIdRef = useRef(0)
+  const selectedTaskIdRef = useRef(selectedTaskId)
+  selectedTaskIdRef.current = selectedTaskId
 
   const loadTaskData = useCallback(async (taskId: string): Promise<number | null> => {
+    const requestId = ++requestIdRef.current
     try {
       const [eventList, task, taskOverview, runList, folderList] = await Promise.all([
         listTaskEvents(taskId),
@@ -36,6 +40,7 @@ export function useSelectedTaskData({
         listComponentRuns(taskId),
         listTaskFolders(taskId),
       ])
+      if (requestId !== requestIdRef.current || taskId !== selectedTaskIdRef.current) return null
       if (!isBuiltinProfileTask(task)) {
         clearSelectedTask(taskId)
         return null
@@ -48,6 +53,7 @@ export function useSelectedTaskData({
       setTaskDataTaskId(taskId)
       return eventList.latest_sequence
     } catch (reason) {
+      if (requestId !== requestIdRef.current || taskId !== selectedTaskIdRef.current) return null
       notify(reason instanceof Error ? reason.message : '无法读取任务详情', 'error')
       return null
     }

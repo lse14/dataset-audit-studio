@@ -247,6 +247,7 @@ def select_directory(
             project_root=Path(request.app.state.project_root),
             purpose=payload.purpose,
             initial_path=payload.initial_path,
+            picker_host=getattr(request.app.state, "native_picker_host", None),
         )
     except DirectoryDialogBusy as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
@@ -270,6 +271,7 @@ def select_file(
             project_root=Path(request.app.state.project_root),
             purpose=payload.purpose,
             initial_path=payload.initial_path,
+            picker_host=getattr(request.app.state, "native_picker_host", None),
         )
     except DirectoryDialogBusy as error:
         raise HTTPException(status_code=409, detail=str(error)) from error

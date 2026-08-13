@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +25,7 @@ from dataset_audit_studio.clustering.quota import (
     allocate_sqrt_quota,
     select_diverse,
 )
+from dataset_audit_studio.clustering.repository import ClusteringRepository
 from dataset_audit_studio.clustering.sae import train_sparse_autoencoder
 from dataset_audit_studio.clustering.shards import EmbeddingShardStore
 from dataset_audit_studio.clustering.torch_runtime import _image_feature_tensor
@@ -43,6 +45,22 @@ def test_siglip2_image_features_use_the_pooled_model_output() -> None:
     assert _image_feature_tensor(pooled) is pooled
     with pytest.raises(RuntimeError, match="pooled tensor"):
         _image_feature_tensor(object())
+
+
+def test_clustering_config_defaults_semantic_duplicate_threshold_to_0_92() -> None:
+    assert ClusteringConfig().semantic_duplicate_threshold == pytest.approx(0.92)
+    assert (
+        ClusteringConfig.from_task_config({}).semantic_duplicate_threshold
+        == pytest.approx(0.92)
+    )
+
+
+def test_persist_cluster_scope_defaults_semantic_duplicate_threshold_to_0_92() -> None:
+    signature = inspect.signature(ClusteringRepository.persist_cluster_scope)
+    assert (
+        signature.parameters["semantic_duplicate_threshold"].default
+        == pytest.approx(0.92)
+    )
 
 
 def test_clustering_config_is_strict_and_legacy_three_stage_config_is_closed() -> None:

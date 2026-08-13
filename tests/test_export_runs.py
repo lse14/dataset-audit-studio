@@ -3,7 +3,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import importlib
+import inspect
 import json
+from contextlib import contextmanager
 from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
@@ -173,6 +175,45 @@ def _export_run_service():
             return getattr(self._service, name)
 
     return PreviewingService
+
+
+def _png_rgba_bytes() -> bytes:
+    buffer = BytesIO()
+    image = Image.new("RGBA", (2, 1), (0, 0, 0, 0))
+    image.putpixel((1, 0), (10, 20, 30, 64))
+    image.save(buffer, format="PNG")
+    image.close()
+    return buffer.getvalue()
+
+
+def _track_encode_inside_write_session(monkeypatch):
+    from dataset_audit_studio.database.session import Database
+    from dataset_audit_studio.export import image_conversion, tree_publisher
+
+    original_encode = image_conversion.encode_export_image
+    original_write = Database.write_session
+    in_write = {"value": False}
+    encode_in_write: list[bool] = []
+
+    @contextmanager
+    def tracking_write(self):
+        in_write["value"] = True
+        try:
+            with original_write(self) as session:
+                yield session
+        finally:
+            in_write["value"] = False
+
+    def tracking_encode(source, image_format):
+        encode_in_write.append(in_write["value"])
+        return original_encode(source, image_format)
+
+    monkeypatch.setattr(Database, "write_session", tracking_write)
+    monkeypatch.setattr(image_conversion, "encode_export_image", tracking_encode)
+    monkeypatch.setattr(tree_publisher, "encode_export_image", tracking_encode)
+    cache_mod = importlib.import_module("dataset_audit_studio.export_runs.transcode_cache")
+    monkeypatch.setattr(cache_mod, "encode_export_image", tracking_encode)
+    return encode_in_write
 
 
 def test_completed_profile_task_creates_one_immutable_copy_run(
@@ -2461,3 +2502,247 @@ def test_export_run_rejects_a_raw_reparse_output_alias_before_resolution(
 
     assert error.value.code == "export_output_path_invalid"
     assert list(target.iterdir()) == []
+
+
+def test_export_create_does_not_encode_inside_write_session(
+    database, task_service, tmp_path, monkeypatch
+) -> None:
+    encode_in_write = _track_encode_inside_write_session(monkeypatch)
+    task = _completed_profile_task(
+        database, task_service, tmp_path, image_bytes=_png_rgba_bytes()
+    )
+    output = tmp_path / "encode-outside-write"
+    output.mkdir()
+    service = _export_run_service()(database)
+    preview = service.preview(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="webp",
+    )
+
+    service.create(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="webp",
+        preview_digest=preview.preview_digest,
+    )
+
+    assert encode_in_write
+    assert encode_in_write == [False] * len(encode_in_write)
+
+
+def test_planner_preview_digest_has_no_dead_false_branch() -> None:
+    source = inspect.getsource(
+        importlib.import_module("dataset_audit_studio.export_runs.planner")
+    )
+
+    assert "if False" not in source
+
+
+def test_export_service_uses_public_planner_contract() -> None:
+    source = inspect.getsource(
+        importlib.import_module("dataset_audit_studio.export_runs.service")
+    )
+
+    assert "planner._plan_current" not in source
+    assert "planner._finalize_plan" not in source
+    assert "planner._plan_fingerprint" not in source
+
+
+def test_transcode_cache_hit_avoids_second_encode(tmp_path, monkeypatch) -> None:
+    from dataset_audit_studio.export.image_conversion import encode_export_image
+    from dataset_audit_studio.export_runs.transcode_cache import (
+        TranscodeCache,
+        transcode_cache_key,
+    )
+
+    source = tmp_path / "cache-source.png"
+    source.write_bytes(_png_rgba_bytes())
+    original = encode_export_image
+    calls = {"n": 0}
+
+    def counting(path, image_format):
+        calls["n"] += 1
+        return original(path, image_format)
+
+    monkeypatch.setattr(
+        "dataset_audit_studio.export_runs.transcode_cache.encode_export_image",
+        counting,
+    )
+    cache = TranscodeCache()
+    first = cache.encode(source, "webp")
+    second = cache.encode(source, "webp")
+
+    assert first == second
+    assert calls["n"] == 1
+    assert transcode_cache_key(source, "jpeg") != transcode_cache_key(source, "webp")
+
+
+def test_transcode_cache_does_not_reuse_mismatched_format_or_mtime(
+    tmp_path, monkeypatch
+) -> None:
+    from dataset_audit_studio.export.image_conversion import encode_export_image
+    from dataset_audit_studio.export_runs.transcode_cache import TranscodeCache
+
+    source = tmp_path / "cache-mismatch.png"
+    source.write_bytes(_png_rgba_bytes())
+    original = encode_export_image
+    calls = {"n": 0}
+
+    def counting(path, image_format):
+        calls["n"] += 1
+        return original(path, image_format)
+
+    monkeypatch.setattr(
+        "dataset_audit_studio.export_runs.transcode_cache.encode_export_image",
+        counting,
+    )
+    cache = TranscodeCache()
+    webp = cache.encode(source, "webp")
+    source.write_bytes(_png_rgba_bytes())
+    jpeg = cache.encode(source, "jpeg")
+    other = Image.new("RGB", (3, 1), (9, 8, 7))
+    other.save(source, format="PNG")
+    other.close()
+    changed = cache.encode(source, "webp")
+
+    assert webp != jpeg
+    assert changed == cache.encode(source, "webp")
+    assert calls["n"] == 3
+
+
+def test_export_run_reuses_transcode_cache_from_preview_to_publish(
+    database, task_service, tmp_path, monkeypatch
+) -> None:
+    from dataset_audit_studio.export.image_conversion import encode_export_image as original
+
+    calls = {"n": 0}
+
+    def counting(source, image_format):
+        calls["n"] += 1
+        return original(source, image_format)
+
+    monkeypatch.setattr(
+        "dataset_audit_studio.export.image_conversion.encode_export_image",
+        counting,
+    )
+    monkeypatch.setattr(
+        "dataset_audit_studio.export.tree_publisher.encode_export_image",
+        counting,
+    )
+    monkeypatch.setattr(
+        "dataset_audit_studio.export_runs.transcode_cache.encode_export_image",
+        counting,
+    )
+    task = _completed_profile_task(
+        database, task_service, tmp_path, image_bytes=_png_rgba_bytes()
+    )
+    output = tmp_path / "cached-transcode"
+    output.mkdir()
+    service = _export_run_service()(database)
+    preview = service.preview(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="webp",
+    )
+    service.create(
+        task.id,
+        output_root=str(output),
+        minimum_resolution=512,
+        image_format="webp",
+        preview_digest=preview.preview_digest,
+    )
+    claimed = task_service.claim_next(owner="cache-hit-worker", lease_seconds=60)
+    assert claimed is not None
+    completed = _export_run_executor()(database).run(claimed.token)
+
+    assert completed.status == "completed", completed.error_message
+    assert calls["n"] == 1
+
+
+def test_export_executor_heartbeat_interval_defaults_to_batch_size() -> None:
+    executor_mod = importlib.import_module("dataset_audit_studio.export_runs.executor")
+
+    assert 32 <= executor_mod.HEARTBEAT_FILE_INTERVAL <= 64
+
+
+def test_export_executor_heartbeats_in_file_batches(
+    database, task_service, tmp_path, monkeypatch
+) -> None:
+    copying_cursors: list[int] = []
+    executor_type = _export_run_executor()
+    original = executor_type._set_copying
+
+    def tracking(self, token, staging_root, next_file, plan, manifest_sha256):
+        copying_cursors.append(next_file)
+        return original(self, token, staging_root, next_file, plan, manifest_sha256)
+
+    monkeypatch.setattr(executor_type, "_set_copying", tracking)
+    task = _completed_profile_task(
+        database, task_service, tmp_path, caption="batch heartbeat caption"
+    )
+    output = tmp_path / "heartbeat-batch"
+    output.mkdir()
+    _export_run_service()(database).create(
+        task.id, output_root=str(output), minimum_resolution=512
+    )
+    claimed = task_service.claim_next(owner="heartbeat-batch-worker", lease_seconds=60)
+    assert claimed is not None
+    completed = executor_type(database).run(claimed.token)
+
+    assert completed.status == "completed", completed.error_message
+    assert 1 not in copying_cursors
+    assert copying_cursors[-1] >= 2
+
+
+def test_export_run_resume_is_idempotent_when_staging_ahead_of_checkpoint(
+    database, task_service, tmp_path
+) -> None:
+    class HardStop(BaseException):
+        pass
+
+    class StopAfterSecondFile(ExportTreePublisher):
+        def __init__(self) -> None:
+            super().__init__()
+            self.writes = 0
+
+        def write_file(self, staging_root, file) -> None:
+            super().write_file(staging_root, file)
+            self.writes += 1
+            if self.writes >= 2:
+                raise HardStop("stop after second staging write")
+
+    task = _completed_profile_task(
+        database, task_service, tmp_path, caption="resume caption"
+    )
+    output = tmp_path / "uncheckpointed-staging"
+    output.mkdir()
+    run = _export_run_service()(database).create(
+        task.id, output_root=str(output), minimum_resolution=512
+    )
+    claimed = task_service.claim_next(owner="uncheckpointed-worker", lease_seconds=60)
+    assert claimed is not None
+    with pytest.raises(HardStop):
+        _export_run_executor()(database, tree_publisher=StopAfterSecondFile()).run(
+            claimed.token
+        )
+    with database.read_session() as session:
+        persisted = session.get(models.ExportRun, run.id)
+        assert persisted is not None
+        assert persisted.checkpoint_json.get("next_file") == 0
+    with database.write_session() as session:
+        lease = session.get(WorkerLease, 1)
+        assert lease is not None
+        lease.expires_at = task_service.clock() - timedelta(seconds=1)
+    task_service.recover_stale_leases()
+    resumed = task_service.claim_next(owner="uncheckpointed-recovery", lease_seconds=60)
+    assert resumed is not None
+
+    completed = _export_run_executor()(database).run(resumed.token)
+
+    assert completed.status == "completed", (completed.error_code, completed.error_message)
+    assert (output / "1_source" / "sample.png").read_bytes() == b"export-run-source"
+    assert (output / "1_source" / "sample.txt").read_text(encoding="utf-8") == "resume caption"

@@ -406,32 +406,27 @@ class EligibilityResolver:
                 ResolutionAssessment.eligible.is_(True),
             )
             samples_query = samples_query.where(Sample.id.in_(eligible_samples))
-        excluded_ai = set(
-            session.scalars(
-                select(ReviewDecision.sample_id).where(
-                    ReviewDecision.task_id == task_id,
-                    ReviewDecision.category == "ai_generated",
-                    ReviewDecision.decision == "approved_exclude",
-                    ReviewDecision.is_active.is_(True),
-                    ReviewDecision.sample_id.is_not(None),
-                )
-            ).all()
+        excluded_ai = select(ReviewDecision.sample_id).where(
+            ReviewDecision.task_id == task_id,
+            ReviewDecision.category == "ai_generated",
+            ReviewDecision.decision == "approved_exclude",
+            ReviewDecision.is_active.is_(True),
+            ReviewDecision.sample_id.is_not(None),
         )
-        outside_domain = set(
-            session.scalars(
-                select(Evidence.sample_id).where(
-                    Evidence.task_id == task_id,
-                    Evidence.code == "in_domain_probability",
-                    Evidence.value_number.is_not(None),
-                    Evidence.threshold_number.is_not(None),
-                    Evidence.value_number < Evidence.threshold_number,
-                )
-            ).all()
+        outside_domain = select(Evidence.sample_id).where(
+            Evidence.task_id == task_id,
+            Evidence.code == "in_domain_probability",
+            Evidence.value_number.is_not(None),
+            Evidence.threshold_number.is_not(None),
+            Evidence.value_number < Evidence.threshold_number,
+        )
+        samples_query = samples_query.where(
+            ~Sample.id.in_(excluded_ai),
+            ~Sample.id.in_(outside_domain),
         )
         scopes: dict[str, list[Sample]] = defaultdict(list)
         for sample in session.scalars(samples_query).all():
-            if sample.id not in excluded_ai and sample.id not in outside_domain:
-                scopes[sample.artist_scope].append(sample)
+            scopes[sample.artist_scope].append(sample)
         identities: dict[str, tuple[str, int]] = {}
         for scope_id, members in scopes.items():
             payload = {

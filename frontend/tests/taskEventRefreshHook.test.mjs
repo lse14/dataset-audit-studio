@@ -175,6 +175,33 @@ test('lifecycle skips a null initial sequence and cannot open a stream after dis
   assert.deepEqual(lateHarness.opened, [])
 })
 
+test('lifecycle reopens the stream after fallback obtains a sequence', async () => {
+  const { startTaskEventRefreshLifecycle } = await eventRefreshHook()
+  const { createTaskRefreshPolicy } = await import(REFRESH_POLICY_URL.href)
+  let loads = 0
+  const harness = createLifecycleHarness(async () => {
+    loads += 1
+    if (loads === 1) return null
+    return 71
+  })
+  harness.ports.createRefreshPolicy = createTaskRefreshPolicy
+  const lifecycle = startTaskEventRefreshLifecycle('task-1', harness.ports)
+  await settle()
+  assert.deepEqual(harness.opened, [])
+
+  const fallbackId = [...harness.timers.timers.entries()].find(([, timer]) => timer.delay === 5000)?.[0]
+  assert.ok(fallbackId, 'fallback timer must be pending after a null initial sequence')
+  harness.timers.run(fallbackId)
+
+  const debounceId = [...harness.timers.timers.entries()].find(([, timer]) => timer.delay === 120)?.[0]
+  assert.ok(debounceId, 'fallback must schedule a refresh debounce')
+  harness.timers.run(debounceId)
+  await settle()
+
+  assert.deepEqual(harness.opened, [{ after: 71, taskId: 'task-1' }])
+  lifecycle.dispose()
+})
+
 test('stream open and error update connection state and fallback policy', async () => {
   const { startTaskEventRefreshLifecycle } = await eventRefreshHook()
   const harness = createLifecycleHarness(async () => 31)

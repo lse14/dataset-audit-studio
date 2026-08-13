@@ -12,7 +12,7 @@ from dataset_audit_studio.components.dataset_export.contracts import (
     PlannedFile,
 )
 from dataset_audit_studio.core.file_integrity import is_reparse, sha256_file
-from dataset_audit_studio.export.image_conversion import encode_export_image
+from dataset_audit_studio.export.image_conversion import ImageExportFormat, encode_export_image
 
 __all__ = ("ExportTreePublisher",)
 
@@ -42,6 +42,13 @@ def _retry_windows_lock(operation: Callable[[], _T]) -> _T:
 
 class ExportTreePublisher:
     """Publish one already-planned copy-export tree without task state ownership."""
+
+    def __init__(
+        self,
+        *,
+        encode_image: Callable[[Path, ImageExportFormat], bytes] | None = None,
+    ) -> None:
+        self._encode_image = encode_image or encode_export_image
 
     def validate_roots(self, source_root: Path, output_root: Path) -> None:
         if not output_root.name:
@@ -120,7 +127,7 @@ class ExportTreePublisher:
                         f"Export transcode source is missing: {file.destination_relative}"
                     )
                 self._write_content_file(
-                    part, encode_export_image(file.source_path, file.transcode_format)
+                    part, self._encode_image(file.source_path, file.transcode_format)
                 )
             elif file.source_path is not None:
                 self._copy_source_file(file.source_path, part)

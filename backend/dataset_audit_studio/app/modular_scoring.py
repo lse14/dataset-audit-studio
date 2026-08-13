@@ -778,7 +778,7 @@ class ModularScoringComponentService:
         capabilities = []
         if "aesthetic" in config.enabled_components:
             capabilities.append(AESTHETIC_FEATURE_CAPABILITY)
-        if "ai" in config.enabled_components:
+        if "ai" in config.enabled_components and config.ai.model_id == UFD_MODEL_ID:
             capabilities.append(UFD_FEATURE_CAPABILITY)
         return tuple(sorted(capabilities))
 

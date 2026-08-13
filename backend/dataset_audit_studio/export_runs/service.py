@@ -145,80 +145,57 @@ class ExportRunService:
         if not self._is_digest(preview_digest):
             raise ExportRunError("export_preview_required", "A current preview_digest is required")
         output_key = self._output_key(path)
+        planner = ExportRunPlanner(self.database)
+        with self.database.read_session() as session:
+            task, config = self._assert_create_ready(
+                session,
+                task_id,
+                path=path,
+                output_key=output_key,
+                expected_status=expected_status,
+                expected_version=expected_version,
+                complete_task=complete_task,
+            )
+            settings = self._copy_settings(
+                config.config_json,
+                minimum_folder_images=selection["minimum_folder_images"],
+                add_repeat_prefix=selection["add_repeat_prefix"],
+                sample_seen_mode=selection["sample_seen_mode"],
+                sample_seen_target=selection["sample_seen_target"],
+                image_format=normalized_image_format,
+                minimum_resolution=minimum_resolution,
+                domain_minimum=domain,
+                exclude_exact_visual_duplicates=duplicate_filter,
+                style_outlier_mode=style_mode,
+                aesthetic_minimum=threshold,
+            )
+            pending = planner.plan_current(session, task, config, settings)
+        planned = planner.finalize_plan(pending)
+        if planned.preview_digest != preview_digest:
+            raise ExportRunError(
+                "export_preview_stale",
+                "Export preview is stale; refresh before creating the run",
+            )
+        if int(planned.summary.get("included_count", 0)) == 0:
+            raise ExportRunError(
+                "export_empty_output", "Export preview contains no eligible samples"
+            )
         try:
             with self.database.write_session() as session:
-                task, config = self._current_task_config(session, task_id)
-                if not self._has_builtin_profile(config.config_json):
-                    raise ExportRunError(
-                        "legacy_task_config_unsupported",
-                        "Profile-free task configuration is no longer supported",
-                    )
-                if expected_version is not None and task.row_version != expected_version:
-                    raise ExportRunError(
-                        "export_task_version_conflict",
-                        "Task changed before first export confirmation",
-                    )
-                if task.status != expected_status.value:
-                    raise ExportRunError(
-                        "export_review_not_ready" if complete_task else "export_task_not_completed",
-                        "Final review is no longer available"
-                        if complete_task
-                        else "Only completed tasks can create an export run",
-                    )
-                if complete_task and not self._is_copy_config(config.config_json):
-                    raise ExportRunError(
-                        "export_mode_unsupported",
-                        "First export review release requires copy mode",
-                    )
-                if complete_task and session.scalar(
-                    select(ExportRun.id).where(ExportRun.task_id == task.id)
-                ) is not None:
-                    raise ExportRunError(
-                        "export_first_run_exists",
-                        "The first export run has already been created",
-                    )
-                try:
-                    ExportTreePublisher().validate_roots(
-                        Path(task.source_root).resolve(strict=False),
-                        path,
-                    )
-                except ValueError as error:
-                    raise ExportRunError("export_output_path_invalid", str(error)) from error
-                if (
-                    session.scalar(select(ExportRun.id).where(ExportRun.output_key == output_key))
-                    is not None
-                ):
-                    raise ExportRunError(
-                        "export_output_already_used",
-                        "Export output has already been used by an export run",
-                    )
-                if any(path.iterdir()):
-                    raise ExportRunError(
-                        "export_output_not_empty", "Export output directory is not empty"
-                    )
-                planner = ExportRunPlanner(self.database)
-                settings = self._copy_settings(
-                    config.config_json,
-                    minimum_folder_images=selection["minimum_folder_images"],
-                    add_repeat_prefix=selection["add_repeat_prefix"],
-                    sample_seen_mode=selection["sample_seen_mode"],
-                    sample_seen_target=selection["sample_seen_target"],
-                    image_format=normalized_image_format,
-                    minimum_resolution=minimum_resolution,
-                    domain_minimum=domain,
-                    exclude_exact_visual_duplicates=duplicate_filter,
-                    style_outlier_mode=style_mode,
-                    aesthetic_minimum=threshold,
+                task, config = self._assert_create_ready(
+                    session,
+                    task_id,
+                    path=path,
+                    output_key=output_key,
+                    expected_status=expected_status,
+                    expected_version=expected_version,
+                    complete_task=complete_task,
                 )
-                planned = planner._build_current(session, task, config, settings)
-                if planned.preview_digest != preview_digest:
+                confirmed = planner.plan_current(session, task, config, settings)
+                if planner.plan_fingerprint(confirmed) != planner.plan_fingerprint(pending):
                     raise ExportRunError(
                         "export_preview_stale",
                         "Export preview is stale; refresh before creating the run",
-                    )
-                if int(planned.summary.get("included_count", 0)) == 0:
-                    raise ExportRunError(
-                        "export_empty_output", "Export preview contains no eligible samples"
                     )
                 identity = (
                     self._aesthetic_identity(config.config_json) if threshold is not None else None
@@ -586,6 +563,68 @@ class ExportRunService:
             "config_hash": scoring.inference_config_hash("aesthetic"),
             "algorithm_version": PREPROCESSING_VERSIONS["aesthetic"],
         }
+
+    def _assert_create_ready(
+        self,
+        session,
+        task_id: str,
+        *,
+        path: Path,
+        output_key: str,
+        expected_status: TaskStatus,
+        expected_version: int | None,
+        complete_task: bool,
+    ) -> tuple[Task, TaskConfig]:
+        task, config = self._current_task_config(session, task_id)
+        if not self._has_builtin_profile(config.config_json):
+            raise ExportRunError(
+                "legacy_task_config_unsupported",
+                "Profile-free task configuration is no longer supported",
+            )
+        if expected_version is not None and task.row_version != expected_version:
+            raise ExportRunError(
+                "export_task_version_conflict",
+                "Task changed before first export confirmation",
+            )
+        if task.status != expected_status.value:
+            raise ExportRunError(
+                "export_review_not_ready" if complete_task else "export_task_not_completed",
+                "Final review is no longer available"
+                if complete_task
+                else "Only completed tasks can create an export run",
+            )
+        if complete_task and not self._is_copy_config(config.config_json):
+            raise ExportRunError(
+                "export_mode_unsupported",
+                "First export review release requires copy mode",
+            )
+        if complete_task and session.scalar(
+            select(ExportRun.id).where(ExportRun.task_id == task.id)
+        ) is not None:
+            raise ExportRunError(
+                "export_first_run_exists",
+                "The first export run has already been created",
+            )
+        try:
+            ExportTreePublisher().validate_roots(
+                Path(task.source_root).resolve(strict=False),
+                path,
+            )
+        except ValueError as error:
+            raise ExportRunError("export_output_path_invalid", str(error)) from error
+        if (
+            session.scalar(select(ExportRun.id).where(ExportRun.output_key == output_key))
+            is not None
+        ):
+            raise ExportRunError(
+                "export_output_already_used",
+                "Export output has already been used by an export run",
+            )
+        if any(path.iterdir()):
+            raise ExportRunError(
+                "export_output_not_empty", "Export output directory is not empty"
+            )
+        return task, config
 
     @staticmethod
     def _current_task_config(session, task_id: str) -> tuple[Task, TaskConfig]:

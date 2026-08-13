@@ -576,7 +576,7 @@ test('profile task submits an approved exclusion while paused for curated confir
   })
 })
 
-test('evidence review opens curated candidates and submits a scoped overlay decision', async ({ page }) => {
+test('evidence review direct audit route submits a scoped overlay decision', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem('dataset-audit-selected-task-v2', 'task-7')
   })
@@ -584,7 +584,7 @@ test('evidence review opens curated candidates and submits a scoped overlay deci
   await page.goto('/#reviews')
 
   await expect(page).toHaveURL(/#risks$/)
-  await page.getByRole('button', { name: '进入审计' }).click()
+  await expect(page.getByRole('dialog', { name: '任务等待人工复核' })).toHaveCount(0)
   await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '重复', exact: true }).click()
   await page.getByRole('button', { name: '视觉重复' }).click()
   await expect(page.getByText('curated-sample.png')).toBeVisible()
@@ -626,7 +626,7 @@ test('SAE feature evidence stays outside the primary audit UI', async ({ page })
   })
   await installApiMock(page, task('artist_concept', 'evidence_review'))
   await page.goto('/#reviews')
-  await page.getByRole('button', { name: '稍后处理' }).click()
+  await expect(page.getByRole('dialog', { name: '任务等待人工复核' })).toHaveCount(0)
 
   const navigation = page.getByRole('navigation', { name: '主导航' })
   await expect(navigation.getByText('SAE 特征')).toHaveCount(0)

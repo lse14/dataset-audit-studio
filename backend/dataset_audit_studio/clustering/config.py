@@ -25,7 +25,7 @@ class ClusteringConfig(BaseModel):
     enabled: bool = True
     scope_mode: Literal["global", "artist", "concept"] = "artist"
     device: Literal["auto", "cuda", "cpu"] = "auto"
-    embedding_batch_size: int = Field(default=8, ge=1, le=64)
+    embedding_batch_size: int = Field(default=8, ge=1, le=256)
     embedding_shard_size: int = Field(default=4096, ge=64, le=16_384)
     minimum_split_size: int = Field(default=64, ge=8, le=4096)
     target_leaf_size: int = Field(default=128, ge=16, le=8192)
@@ -34,7 +34,7 @@ class ClusteringConfig(BaseModel):
     seed: int = Field(default=20260717, ge=0, le=2**31 - 1)
     phash_max_distance: int = Field(default=4, ge=0, le=32)
     colorhash_max_distance: int = Field(default=2, ge=0, le=32)
-    semantic_duplicate_threshold: float = Field(default=0.985, ge=0.8, le=1.0)
+    semantic_duplicate_threshold: float = Field(default=0.92, ge=0.8, le=1.0)
     sae: SAEConfig = Field(default_factory=SAEConfig)
 
     @model_validator(mode="after")

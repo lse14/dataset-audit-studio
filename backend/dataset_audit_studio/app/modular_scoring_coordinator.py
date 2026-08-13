@@ -13,6 +13,7 @@ from dataset_audit_studio.app.modular_scoring import (
 from dataset_audit_studio.app.modular_scoring_process import (
     run_modular_scoring_component_subprocess,
 )
+from dataset_audit_studio.components.ai_detection.config import COMMUNITY_FORENSICS_MODEL_ID
 from dataset_audit_studio.core.component_registry import ComponentRegistry
 from dataset_audit_studio.core.model_assets import RuntimeAssets, select_runtime_assets
 from dataset_audit_studio.database.enums import TaskStatus
@@ -46,14 +47,27 @@ def build_scoring_component_plan(
     *,
     registry: ComponentRegistry = COMPONENT_REGISTRY,
 ) -> tuple[ScoringComponentPlan, ...]:
-    return tuple(
+    resolved_components = registry.resolve_task_config(task_config)
+    plan = tuple(
         ScoringComponentPlan(
             component_id=resolved.definition.manifest.id,
             model_ids=resolved.definition.model_ids(resolved.config),
         )
-        for resolved in registry.resolve_task_config(task_config)
+        for resolved in resolved_components
         if resolved.definition.manifest.id in MODULAR_SCORING_COMPONENT_IDS
     )
+    community_only = any(
+        item.component_id == "detect.ai"
+        and item.model_ids == (COMMUNITY_FORENSICS_MODEL_ID,)
+        for item in plan
+    ) and not any(item.component_id == "score.aesthetic_domain" for item in plan)
+    clip_is_dependency_only = any(
+        resolved.definition.manifest.id == "feature.clip_l14" and resolved.auto_enabled
+        for resolved in resolved_components
+    )
+    if community_only and clip_is_dependency_only:
+        return tuple(item for item in plan if item.component_id != "feature.clip_l14")
+    return plan
 
 
 class ModularScoringCoordinator:

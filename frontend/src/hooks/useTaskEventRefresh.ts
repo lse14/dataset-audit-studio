@@ -37,6 +37,22 @@ export function startTaskEventRefreshLifecycle(
   let refreshRunning = false
   let refreshQueued = false
 
+  const connectStream = (after: number) => {
+    if (cancelled || stream !== null) return
+    stream = openStream(taskId, after, {
+      onError: () => {
+        if (cancelled) return
+        refreshPolicy.onError()
+        setConnected(false)
+      },
+      onEvent: scheduleRefresh,
+      onOpen: () => {
+        if (cancelled) return
+        refreshPolicy.onOpen()
+        setConnected(true)
+      },
+    })
+  }
   const refresh = async () => {
     if (refreshRunning) {
       refreshQueued = true
@@ -45,7 +61,8 @@ export function startTaskEventRefreshLifecycle(
     refreshRunning = true
     do {
       refreshQueued = false
-      await loadTaskData(taskId)
+      const after = await loadTaskData(taskId)
+      if (!cancelled && after !== null && stream === null) connectStream(after)
     } while (!cancelled && refreshQueued)
     refreshRunning = false
   }
@@ -65,19 +82,7 @@ export function startTaskEventRefreshLifecycle(
   const start = async () => {
     const after = await loadTaskData(taskId)
     if (cancelled || after === null) return
-    stream = openStream(taskId, after, {
-      onError: () => {
-        if (cancelled) return
-        refreshPolicy.onError()
-        setConnected(false)
-      },
-      onEvent: scheduleRefresh,
-      onOpen: () => {
-        if (cancelled) return
-        refreshPolicy.onOpen()
-        setConnected(true)
-      },
-    })
+    connectStream(after)
   }
 
   void start()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -138,6 +138,47 @@ class ClusteringRepository:
                 )
             )
         return tuple(sorted(samples, key=lambda sample: sample.relative_path))
+
+    @staticmethod
+    def load_embeddings_for_sample_ids(
+        sample_ids: Sequence[str],
+        shards: Sequence[EmbeddingShard],
+        load_shard: Callable[[EmbeddingShard], np.ndarray],
+    ) -> np.ndarray:
+        requested = tuple(sample_ids)
+        if len(requested) != len(set(requested)):
+            raise ValueError("Embedding sample IDs must be unique")
+        if not requested:
+            return np.empty((0, 0), dtype=np.float32)
+
+        requested_set = set(requested)
+        rows: dict[str, np.ndarray] = {}
+        dimensions: set[int] = set()
+        for shard in shards:
+            overlap = requested_set.intersection(shard.sample_ids)
+            if not overlap:
+                continue
+            matrix = np.asarray(load_shard(shard), dtype=np.float32)
+            if matrix.ndim != 2 or matrix.shape[0] != len(shard.sample_ids):
+                raise RuntimeError("Embedding shard rows do not match its sample IDs")
+            dimensions.add(matrix.shape[1])
+            for index, sample_id in enumerate(shard.sample_ids):
+                if sample_id not in overlap:
+                    continue
+                if sample_id in rows:
+                    raise RuntimeError(
+                        f"Embedding sample appears in multiple shards: {sample_id}"
+                    )
+                rows[sample_id] = matrix[index]
+        missing = requested_set.difference(rows)
+        if missing:
+            raise RuntimeError(f"Embedding samples are missing from shards: {sorted(missing)}")
+        if len(dimensions) != 1:
+            raise RuntimeError("Embedding shard dimensions do not match")
+        return np.stack([rows[sample_id] for sample_id in requested]).astype(
+            np.float32,
+            copy=False,
+        )
 
     @staticmethod
     def scopes(
@@ -286,7 +327,7 @@ class ClusteringRepository:
         hierarchy_config_hash: str,
         prepare: bool,
         character_consistency: Mapping[str, object] | None = None,
-        semantic_duplicate_threshold: float = 0.985,
+        semantic_duplicate_threshold: float = 0.92,
         embedding_identity: Mapping[str, object] | None = None,
     ) -> None:
         if prepare:
@@ -349,6 +390,7 @@ class ClusteringRepository:
                 task_id=task_id,
                 scope=scope,
                 nodes=nodes,
+                cluster_ids=id_by_key,
                 sample_ids=local_sample_ids,
                 relative_paths=local_relative_paths,
                 embeddings=scope_embeddings,
@@ -424,6 +466,7 @@ class ClusteringRepository:
         task_id: str,
         scope: ClusteringScope,
         nodes: tuple[ClusterPlanNode, ...],
+        cluster_ids: Mapping[str, str],
         sample_ids: tuple[str, ...],
         relative_paths: tuple[str, ...],
         embeddings: np.ndarray,
@@ -434,20 +477,50 @@ class ClusteringRepository:
         for node in nodes:
             if not node.is_leaf or len(node.sample_indices) < 2:
                 continue
+            leaf_indices = tuple(node.sample_indices)
+            leaf_sample_ids = tuple(sample_ids[index] for index in leaf_indices)
+            persisted_sample_ids = tuple(
+                session.execute(
+                    select(ClusterMembership.sample_id).where(
+                        ClusterMembership.cluster_id == cluster_ids[node.cluster_key]
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if set(persisted_sample_ids) != set(leaf_sample_ids):
+                raise RuntimeError("Persisted leaf membership does not match hierarchy output")
+            relative_path_by_id = dict(
+                session.execute(
+                    select(Sample.id, Sample.relative_path).where(
+                        Sample.task_id == task_id,
+                        Sample.id.in_(persisted_sample_ids),
+                    )
+                ).all()
+            )
+            if set(relative_path_by_id) != set(leaf_sample_ids):
+                raise RuntimeError("Persisted leaf samples are incomplete")
+            leaf_relative_paths = tuple(
+                relative_path_by_id[sample_id] for sample_id in leaf_sample_ids
+            )
+            leaf_embeddings = embeddings[list(leaf_indices)]
             groups = semantic_duplicate_groups(
-                node.sample_indices,
-                embeddings,
+                tuple(range(len(leaf_indices))),
+                leaf_embeddings,
                 threshold=semantic_duplicate_threshold,
-                rank=lambda index: (relative_paths[index], sample_ids[index]),
-                stable_keys=sample_ids,
+                rank=lambda index, paths=leaf_relative_paths, ids=leaf_sample_ids: (
+                    paths[index],
+                    ids[index],
+                ),
+                stable_keys=leaf_sample_ids,
             )
             for group in groups:
-                representative_sample_id = sample_ids[group.representative_index]
+                representative_sample_id = leaf_sample_ids[group.representative_index]
                 for position, local_index in enumerate(group.member_indices):
                     session.add(
                         Evidence(
                             task_id=task_id,
-                            sample_id=sample_ids[local_index],
+                            sample_id=leaf_sample_ids[local_index],
                             code=SEMANTIC_DUPLICATE_EVIDENCE_CODE,
                             source=SEMANTIC_DUPLICATE_EVIDENCE_SOURCE,
                             value_json=group.group_key,

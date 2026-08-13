@@ -568,7 +568,6 @@ class ModularClusteringComponentService:
                 node_count,
                 True,
             )
-        embeddings = self._load_embeddings(samples, shards)
         sae_cache_key = self._sae_cache_key(checkpoints, required=config.sae.enabled)
         batch_index = self._next_batch_index(checkpoints)
         completed = sum(len(scope.sample_indices) for scope in scopes[:next_scope])
@@ -614,7 +613,11 @@ class ModularClusteringComponentService:
         embedding_identity = self.repository.embedding_identity_metadata(shards)
         for scope_index in range(next_scope, len(scopes)):
             scope = scopes[scope_index]
-            local_embeddings = embeddings[list(scope.sample_indices)]
+            local_embeddings = self.repository.load_embeddings_for_sample_ids(
+                tuple(samples[index].sample_id for index in scope.sample_indices),
+                shards,
+                self.shards.load,
+            )
             local_keys = tuple(samples[index].relative_path for index in scope.sample_indices)
             try:
                 nodes = hierarchical_clusters(

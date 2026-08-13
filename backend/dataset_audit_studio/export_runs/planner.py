@@ -33,12 +33,12 @@ from dataset_audit_studio.database.models import (
 from dataset_audit_studio.database.session import Database
 from dataset_audit_studio.export.image_conversion import (
     ImageExportFormat,
-    encode_export_image,
     normalize_image_format,
     output_suffix,
 )
 from dataset_audit_studio.export_runs.eligibility import ELIGIBILITY_REASONS, EligibilityResolver
 from dataset_audit_studio.export_runs.errors import ExportRunError
+from dataset_audit_studio.export_runs.transcode_cache import cached_encode_export_image
 from dataset_audit_studio.export_runs.types import ExportRunPreview
 from dataset_audit_studio.runtime import PROJECT_ROOT
 from dataset_audit_studio.scoring.assets import EVIDENCE_SOURCES, PREPROCESSING_VERSIONS
@@ -54,6 +54,36 @@ class RunPlan:
     summary: dict[str, dict[str, dict[str, int]] | dict[str, int]]
     preview_digest: str = ""
     input_snapshot: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class _PendingExportFile:
+    destination_relative: str
+    kind: str
+    source_path: Path
+    transcode_format: str | None = None
+    conversion_relative_path: str | None = None
+
+
+@dataclass(frozen=True)
+class _PendingRunPlan:
+    task_id: str
+    task_config_revision: int
+    config_hash: str
+    settings: dict[str, Any]
+    source_root: Path
+    eligibility_digest: str
+    eligibility_evidence: dict[str, Any]
+    duplicate_groups: tuple[dict[str, Any], ...]
+    folder_summaries: tuple[dict[str, Any], ...]
+    exclusion_counts: dict[str, int]
+    included_count: int
+    folder_below_minimum: dict[str, int]
+    warnings: tuple[str, ...]
+    canonical_sample_ids: list[str]
+    dataset_roots: tuple[str, ...]
+    pending_files: tuple[_PendingExportFile, ...]
+    annotation_requests: tuple[tuple[Path, PurePosixPath], ...]
 
 
 class ExportRunPlanner:
@@ -131,7 +161,7 @@ class ExportRunPlanner:
             )
             if not isinstance(export, dict):
                 export = {}
-            planned = self._build_current(
+            pending = self.plan_current(
                 session,
                 task,
                 config,
@@ -151,6 +181,7 @@ class ExportRunPlanner:
                     "keep_annotation_files": bool(export.get("keep_annotation_files", True)),
                 },
             )
+        planned = self.finalize_plan(pending)
         summary = planned.summary
         return ExportRunPreview(
             task_id=task_id,
@@ -261,8 +292,12 @@ class ExportRunPlanner:
     def _build_current(
         self, session, task: Task, config: TaskConfig, settings: dict[str, Any]
     ) -> RunPlan:
+        return self.finalize_plan(self.plan_current(session, task, config, settings))
+
+    def plan_current(
+        self, session, task: Task, config: TaskConfig, settings: dict[str, Any]
+    ) -> _PendingRunPlan:
         source_root = Path(task.source_root).resolve(strict=True)
-        minimum = settings["minimum_resolution"]
         rows = session.scalars(
             select(Sample)
             .where(Sample.task_id == task.id, Sample.scan_state == "valid")
@@ -363,8 +398,9 @@ class ExportRunPlanner:
             )
         if settings["sample_seen_mode"] == "auto" and target is None:
             target = 0
-        files: list[PlannedFile] = []
-        datasets: list[DatasetSummary] = []
+        pending_files: list[_PendingExportFile] = []
+        annotation_requests: list[tuple[Path, PurePosixPath]] = []
+        dataset_roots: list[str] = []
         image_format = normalize_image_format(settings.get("image_format", "original"))
         used_converted_paths: set[str] = set()
         for folder in sorted(
@@ -373,15 +409,7 @@ class ExportRunPlanner:
             if folder.get("excluded"):
                 continue
             output_folder = folder["output_folder"]
-            datasets.append(
-                DatasetSummary(
-                    stage=1,
-                    resolution=minimum,
-                    relative_root=output_folder,
-                    file_count=0,
-                    byte_count=0,
-                )
-            )
+            dataset_roots.append(output_folder)
             for row in sorted(
                 folder["rows"],
                 key=lambda item: (item.relative_path.casefold(), item.relative_path, item.id),
@@ -402,12 +430,12 @@ class ExportRunPlanner:
                 if sample.export_requires_render:
                     relative = relative.with_suffix(".png")
                 if image_format == "original":
-                    image = PlannedFile(
-                        relative.as_posix(),
-                        sha256_file(source),
-                        source.stat().st_size,
-                        "rendered_image" if sample.export_requires_render else "source_image",
-                        source_path=source,
+                    pending_files.append(
+                        _PendingExportFile(
+                            relative.as_posix(),
+                            "rendered_image" if sample.export_requires_render else "source_image",
+                            source,
+                        )
                     )
                 else:
                     relative = self._converted_destination(
@@ -417,31 +445,101 @@ class ExportRunPlanner:
                         used_paths=used_converted_paths,
                         sample_id=row.id,
                     )
-                    try:
-                        encoded = encode_export_image(source, image_format)
-                    except (OSError, ValueError) as error:
-                        raise ExportRunError(
-                            "export_image_conversion_failed",
-                            f"Unable to convert image: {row.relative_path}",
-                        ) from error
-                    image = PlannedFile(
-                        relative.as_posix(),
-                        hashlib.sha256(encoded).hexdigest(),
-                        len(encoded),
-                        "converted_image",
-                        source_path=source,
-                        transcode_format=image_format,
-                    )
-                files.append(image)
-                if settings.get("keep_annotation_files", True):
-                    files.extend(
-                        plan_paired_annotations(
-                            image_source=sample.source_path,
-                            source_root=source_root,
-                            destination_image=relative,
+                    pending_files.append(
+                        _PendingExportFile(
+                            relative.as_posix(),
+                            "converted_image",
+                            source,
+                            transcode_format=image_format,
+                            conversion_relative_path=row.relative_path,
                         )
                     )
-            datasets[-1] = DatasetSummary(
+                if settings.get("keep_annotation_files", True):
+                    annotation_requests.append((sample.source_path, relative))
+        folder_summaries = tuple(
+            {key: value for key, value in folder.items() if key not in {"rows", "suffixes"}}
+            for folder in sorted(
+                folder_items,
+                key=lambda item: (item["source_identifier"].casefold(), item["source_identifier"]),
+            )
+        )
+        included_count = sum(
+            len(folder["rows"]) for folder in folder_items if not folder.get("excluded")
+        )
+        warnings = tuple(
+            sorted(
+                {
+                    *eligibility.warnings,
+                    *(code for folder in folder_items for code in folder.get("warning_codes", [])),
+                }
+            )
+        )
+        return _PendingRunPlan(
+            task_id=task.id,
+            task_config_revision=task.current_config_revision,
+            config_hash=config.config_hash,
+            settings=dict(settings),
+            source_root=source_root,
+            eligibility_digest=eligibility.eligibility_digest,
+            eligibility_evidence=eligibility.evidence_provenance,
+            duplicate_groups=eligibility.duplicate_groups,
+            folder_summaries=folder_summaries,
+            exclusion_counts=dict(total),
+            included_count=included_count,
+            folder_below_minimum={
+                "folder_count": len(below_folders),
+                "image_count": sum(len(folder["rows"]) for folder in below_folders),
+            },
+            warnings=warnings,
+            canonical_sample_ids=[row.id for row, _ in retained],
+            dataset_roots=tuple(dataset_roots),
+            pending_files=tuple(pending_files),
+            annotation_requests=tuple(annotation_requests),
+        )
+
+    def finalize_plan(self, pending: _PendingRunPlan) -> RunPlan:
+        files: list[PlannedFile] = []
+        for item in pending.pending_files:
+            if item.transcode_format is not None:
+                try:
+                    encoded = cached_encode_export_image(item.source_path, item.transcode_format)
+                except (OSError, ValueError) as error:
+                    raise ExportRunError(
+                        "export_image_conversion_failed",
+                        f"Unable to convert image: {item.conversion_relative_path}",
+                    ) from error
+                files.append(
+                    PlannedFile(
+                        item.destination_relative,
+                        hashlib.sha256(encoded).hexdigest(),
+                        len(encoded),
+                        item.kind,
+                        source_path=item.source_path,
+                        transcode_format=item.transcode_format,
+                    )
+                )
+            else:
+                files.append(
+                    PlannedFile(
+                        item.destination_relative,
+                        sha256_file(item.source_path),
+                        item.source_path.stat().st_size,
+                        item.kind,
+                        source_path=item.source_path,
+                    )
+                )
+        for image_source, destination_image in pending.annotation_requests:
+            files.extend(
+                plan_paired_annotations(
+                    image_source=image_source,
+                    source_root=pending.source_root,
+                    destination_image=destination_image,
+                )
+            )
+        files = self._dedupe_files(files)
+        minimum = pending.settings["minimum_resolution"]
+        datasets = tuple(
+            DatasetSummary(
                 stage=1,
                 resolution=minimum,
                 relative_root=output_folder,
@@ -458,54 +556,30 @@ class ExportRunPlanner:
                     or item.destination_relative.startswith(output_folder + "/")
                 ),
             )
-        files = self._dedupe_files(files)
-        plan = ExportPlan(
-            files=tuple(files), datasets=tuple(datasets), latent_records=(), input_digest=""
-        )
-        folder_summaries = tuple(
-            {key: value for key, value in folder.items() if key not in {"rows", "suffixes"}}
-            for folder in sorted(
-                folder_items,
-                key=lambda item: (item["source_identifier"].casefold(), item["source_identifier"]),
-            )
-        )
-        exclusion_counts = dict(total)
-        included_count = sum(
-            len(folder["rows"]) for folder in folder_items if not folder.get("excluded")
-        )
-        warnings = tuple(
-            sorted(
-                {
-                    *eligibility.warnings,
-                    *(code for folder in folder_items for code in folder.get("warning_codes", [])),
-                }
-            )
+            for output_folder in pending.dataset_roots
         )
         summary = {
             "schema": "export.run.summary.v3",
-            "settings": dict(settings),
-            "eligibility_digest": eligibility.eligibility_digest,
-            "eligibility_evidence": eligibility.evidence_provenance,
-            "included_count": included_count,
-            "exclusion_counts": exclusion_counts,
-            "folder_below_minimum": {
-                "folder_count": len(below_folders),
-                "image_count": sum(len(folder["rows"]) for folder in below_folders),
-            },
-            "folders": folder_summaries,
-            "duplicate_groups": eligibility.duplicate_groups,
-            "warnings": warnings,
+            "settings": dict(pending.settings),
+            "eligibility_digest": pending.eligibility_digest,
+            "eligibility_evidence": pending.eligibility_evidence,
+            "included_count": pending.included_count,
+            "exclusion_counts": dict(pending.exclusion_counts),
+            "folder_below_minimum": dict(pending.folder_below_minimum),
+            "folders": pending.folder_summaries,
+            "duplicate_groups": pending.duplicate_groups,
+            "warnings": pending.warnings,
         }
         digest_payload = {
             "contract": "export.run.v3",
-            "task_id": task.id,
-            "task_config_revision": task.current_config_revision,
-            "config_hash": config.config_hash,
+            "task_id": pending.task_id,
+            "task_config_revision": pending.task_config_revision,
+            "config_hash": pending.config_hash,
             "settings": summary["settings"],
-            "eligibility_digest": eligibility.eligibility_digest,
-            "duplicate_groups": eligibility.duplicate_groups,
-            "folders": folder_summaries,
-            "exclusion_counts": exclusion_counts,
+            "eligibility_digest": pending.eligibility_digest,
+            "duplicate_groups": pending.duplicate_groups,
+            "folders": pending.folder_summaries,
+            "exclusion_counts": pending.exclusion_counts,
             "files": [
                 [
                     item.destination_relative,
@@ -520,11 +594,7 @@ class ExportRunPlanner:
         digest_bytes = json.dumps(
             digest_payload, sort_keys=True, separators=(",", ":"), allow_nan=False
         ).encode()
-        preview_digest = (
-            hashlib.sha256(b"preview:").hexdigest()
-            if False
-            else hashlib.sha256(b"preview:" + digest_bytes).hexdigest()
-        )
+        preview_digest = hashlib.sha256(b"preview:" + digest_bytes).hexdigest()
         input_digest = hashlib.sha256(b"input:" + digest_bytes).hexdigest()
         summary["preview_digest"] = preview_digest
         summary["input_digest"] = input_digest
@@ -532,9 +602,9 @@ class ExportRunPlanner:
             "schema": "export.run.input.v2",
             "input_digest": input_digest,
             "preview_digest": preview_digest,
-            "eligibility_digest": eligibility.eligibility_digest,
-            "settings": dict(settings),
-            "canonical_sample_ids": [row.id for row, _ in retained],
+            "eligibility_digest": pending.eligibility_digest,
+            "settings": dict(pending.settings),
+            "canonical_sample_ids": list(pending.canonical_sample_ids),
             "summary": summary,
             "files": [
                 {
@@ -543,7 +613,7 @@ class ExportRunPlanner:
                     "size_bytes": item.size_bytes,
                     "kind": item.kind,
                     "source_ref": (
-                        self._snapshot_source_ref(item.source_path, source_root=source_root)
+                        self._snapshot_source_ref(item.source_path, source_root=pending.source_root)
                         if item.source_path is not None
                         else None
                     ),
@@ -559,15 +629,40 @@ class ExportRunPlanner:
         }
         return RunPlan(
             plan=ExportPlan(
-                files=plan.files,
-                datasets=plan.datasets,
-                latent_records=plan.latent_records,
+                files=tuple(files),
+                datasets=datasets,
+                latent_records=(),
                 input_digest=input_digest,
             ),
             summary=summary,
             preview_digest=preview_digest,
             input_snapshot=input_snapshot,
         )
+
+    @staticmethod
+    def plan_fingerprint(pending: _PendingRunPlan) -> str:
+        # Compare DB-derived inputs only; encoded bytes are produced outside the write lock.
+        payload = {
+            "eligibility_digest": pending.eligibility_digest,
+            "canonical_sample_ids": pending.canonical_sample_ids,
+            "settings": pending.settings,
+            "files": [
+                [
+                    item.destination_relative,
+                    item.kind,
+                    item.source_path.as_posix(),
+                    item.transcode_format,
+                ]
+                for item in pending.pending_files
+            ],
+            "annotations": [
+                [source.as_posix(), destination.as_posix()]
+                for source, destination in pending.annotation_requests
+            ],
+        }
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        ).hexdigest()
 
     def _build_snapshot(
         self,

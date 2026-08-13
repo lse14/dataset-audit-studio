@@ -54,7 +54,7 @@ class ScoringConfig(_StrictConfig):
     enabled: bool = True
     device: Literal["auto", "cuda", "cpu"] = "auto"
     precision: Literal["float32", "float16", "bfloat16"] = "float32"
-    batch_size: int = Field(default=1, ge=1, le=64)
+    batch_size: int = Field(default=1, ge=1, le=256)
     aesthetic: AestheticScoringConfig = Field(default_factory=AestheticScoringConfig)
     ai: AIScoringConfig = Field(default_factory=AIScoringConfig)
     ocr: OCRScoringConfig = Field(default_factory=OCRScoringConfig)

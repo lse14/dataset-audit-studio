@@ -8,6 +8,7 @@ from dataset_audit_studio.app.component_catalog import COMPONENT_REGISTRY
 from dataset_audit_studio.app.component_registration import (
     BUILTIN_COMPONENT_REGISTRATION_CATALOG,
 )
+from dataset_audit_studio.components.ai_detection.config import UFD_MODEL_ID
 from dataset_audit_studio.core.component_registry import ComponentRegistry
 from dataset_audit_studio.core.profile_contracts import (
     DatasetProfile,
@@ -78,8 +79,11 @@ class ComponentTaskConfigMaterializer:
             raw_config = raw.get("config")
             if not isinstance(raw_config, Mapping):
                 raise TypeError(f"Component config {component_id}.config must be an object")
+            raw_config_dict = dict(raw_config)
+            if component_id == "detect.ai" and "model_id" not in raw_config_dict:
+                raw_config_dict["model_id"] = UFD_MODEL_ID
             model = registration.config_model
-            validated = model.model_validate(dict(raw_config)).model_dump(mode="json")
+            validated = model.model_validate(raw_config_dict).model_dump(mode="json")
             if "enabled" in model.model_fields:
                 validated["enabled"] = enabled
             components[component_id] = {"enabled": enabled, "config": validated}

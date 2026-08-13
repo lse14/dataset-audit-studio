@@ -2284,6 +2284,13 @@ dd,
   font-size: 10px;
 }
 
+.risk-list .risk-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
 .risk-row {
   display: grid;
   grid-template-columns: 22px 108px minmax(240px, 1fr) 80px 110px 20px;

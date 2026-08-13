@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -44,6 +45,9 @@ from dataset_audit_studio.runtime import (
     ensure_runtime_directories,
     runtime_paths,
 )
+from dataset_audit_studio.workspace.windows_dialog import NativePickerHost
+
+LOGGER = logging.getLogger(__name__)
 
 
 def create_app(
@@ -53,10 +57,12 @@ def create_app(
     start_worker: bool | None = None,
     models_root: Path | None = None,
     project_root: Path = PROJECT_ROOT,
+    prewarm_picker: bool | None = None,
 ) -> FastAPI:
     resolved_database_path = database_path or default_database_path()
     enforce_database_boundary = database_path is None
     worker_enabled = database_path is None if start_worker is None else start_worker
+    picker_prewarm_enabled = database_path is None if prewarm_picker is None else prewarm_picker
     resolved_models_root = (
         models_root
         if models_root is not None
@@ -79,6 +85,13 @@ def create_app(
         upgrade_database(database)
         app.state.database = database
         app.state.project_root = str(project_root.resolve(strict=False))
+        picker_host = NativePickerHost(project_root) if picker_prewarm_enabled else None
+        app.state.native_picker_host = picker_host
+        if picker_host is not None:
+            try:
+                picker_host.start()
+            except Exception:
+                LOGGER.warning("Native Windows picker prewarm failed", exc_info=True)
         app.state.component_registry = build_component_registry()
         app.state.recovered_tasks = TaskService(database).recover_stale_leases()
         model_storage = ModelStorage(models_root=resolved_models_root)
@@ -106,6 +119,8 @@ def create_app(
         try:
             yield
         finally:
+            if picker_host is not None:
+                picker_host.close()
             worker_stopped = worker is None or worker.stop()
             model_service.shutdown()
             if worker_stopped:

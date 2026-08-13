@@ -1,0 +1,45 @@
+# Rules
+
+- Keep changes limited to restoring the local WebUI and checking related scripts.
+- Use only project-local Python, Node, package caches, models, and generated output.
+- Do not modify source datasets, model files, or unrelated user changes.
+- The user approved removal of obsolete local database state and task files on 2026-08-08. Resolve and verify exact targets before removal.
+- Preserve `data/README.md` and repository source/configuration files during cleanup.
+- Do not add dependencies or refactor unrelated code.
+- Mark completed roadmap items only after fresh verification.
+- Apply absolute virtual-list positioning only to components that provide per-row virtual offsets; ordinary mapped rows, including risk evidence, must remain in normal document flow.
+- In duplicate review, automatic page selection may prepare a batch exclusion but must not submit or alter review decisions without the existing confirmation flow.
+- Preserve exactly one duplicate-group representative by actual pixel area; ties must resolve deterministically by relative path and sample ID.
+- `pixel_area` in duplicate-audit responses is derived read-only metadata for deterministic client-side selection; it must not be treated as a review decision or persisted mutation.
+- For original media, only an empty inferred MIME on a `.webp` path may fall back to `image/webp`; preserve path, source-identity, and `image/*` validation.
+- 画风审计默认参数仅影响缺省的新任务配置；不得改写已保存任务中的显式配置。
+- 多画师范围画风参数评估仅可读取 `E:\Desktop\画风离群测试`；不得修改其中任何图像或自动改写默认配置。
+- 角色预设必须按一级子文件夹运行 SigLIP2 语义分析；`concept` 不得再兼容映射成要求画风证据的 `artist`。
+- 角色一致性结果是待人工确认的视觉语义候选，不得自动排除、不得声明为严格身份识别、不得修改源图片。
+- 角色预设的 SigLIP2、分层聚类和 `concept` 范围必须同时由前端预设契约锁定并由后端物化强制执行；证据必须记录实际模型、预处理和角色算法配置身份。
+- 技术筛选默认值在三个内置预设间保持一致，只影响新任务缺省配置，不改写已保存任务中的显式阈值。
+- 黑白边框必须同时满足连续极端色条带、同色对边成对和向内部明显降幅；单边或自然边缘背景不得告警。
+- 技术指标版本升级后，重扫必须删除 `technical_metrics_v%` 的旧证据，且不得删除其他模型或人工审核来源证据。
+- `E:\Desktop\画风离群测试` 在技术阈值校准中只读使用，不得成为自动化测试的外部依赖。
+- AI 检测校准中，`D:\flux-aki\ComfyUI-aki-v1.6\output` 的 705 张为 AI 正样本，`E:\Desktop\画风离群测试` 的 997 张为非 AI 负样本；两个目录均只读，且不得成为自动化测试的外部依赖。
+- AI 检测模型或默认阈值只能在分层留出交叉验证优于现有 UniversalFakeDetect 后更改；应报告完整召回/误报权衡，不能把任一单一数据集结果表述为通用身份或版权判断。
+- 新组件 AI 默认使用 Community Forensics `community_forensics_model_384` 与 `0.121558/0.464626`；旧直接 `scoring.ai` 配置缺少 `model_id` 时必须保留 UFD，禁止静默迁移。
+- Community Forensics 生产运行只能使用模型注册表中固定 revision、文件大小和 SHA-256 的项目内资产；`models/benchmarks` 仅用于只读基准，不得作为生产运行路径。
+- Community AI 证据必须标记为 `review_only` 并保留模型、预处理和阈值溯源；不得由模型命中自动创建审核决定、改变导出资格或修改源图片。
+- 公开发布只能包含源码、测试、安装入口、README、LICENSE 和第三方合规文件；不得提交本地数据、模型、输出、项目运行时、测试产物、内部路线图、记忆、历史或 superpowers 文档。
+- 项目范围是 LoRA 微调训练集筛选；caption 由独立脚本负责，不应纳入本项目能力、待办或自动改写路径。簇语义/目标选集与 SAE 伪影解释在交付前只能作为规划，任何未来结果都必须保持人工审核、可追溯且不自动排除的边界。
+- 语义近重复只能在同一聚类叶簇内使用已验证 SigLIP2 embedding 生成 `duplicate_semantic` 审核候选；默认阈值未经本地真值校准，不得称为已确认重复。
+- 语义近重复证据必须为 `review_only` 并记录稳定 group key、直接相似度、阈值、叶簇、层级配置及实际 embedding identity；不得自动创建审核决定。
+- `exclude_exact_visual_duplicates` 只能处理 exact/visual 证据；语义候选只有人工 `approved_exclude` 才能通过通用覆盖层影响导出。
+- 簇语义/目标选集与 SAE 伪影解释均为 `[?]` 无限期暂缓，且必须分别重新授权。除非用户明确恢复，禁止实现、估时、下载模型、创建迁移、运行真实 VLM/100k 用户数据或顺带修改现有组件。
+- 簇目标覆盖键固定为 `scope -> dimension -> label`，不含分辨率；artist/character 按一级目录、general 按全局 scope，禁止跨 scope 借样本。不可满足目标必须报告 `unmet`，不得复制图片或静默降约束。
+- SAE 固定为 VLM 批量解释 feature top-k、人工 feature 决策、确定性逐图 candidate、人工 sample 决策；不得逐图调用 VLM，feature 批准不得自动排除图片。四层记录必须分别绑定完整 SAE/VLM/prompt/input provenance。
+- 本次热修复只处理 EXIF Orientation 越界值和 PP-OCR 空/非有限识别置信度；不得放宽数据库 EXIF 约束、移除模块化评分的通用有限值守卫，或修改其他模型的错误策略。
+- OCR 识别置信度非有限时，保留检测区域但将文本视为未知、分数降为 `0.0`；不得保留不可信识别文本或把该情况解释为人工审核决定。
+- 最终用户热补丁只能包含已推送 `main` 中的生产覆盖文件、版本元数据和安装说明；不得包含数据库、模型、运行时、数据集、缓存、测试产物或内部规划文档。
+- Windows 原生路径选择器保持 Windows 11 Common Item Dialog；常驻 STA 宿主必须在 WebUI 正常关闭时退出，预热失败不得阻止 WebUI 启动，也不得遗留孤立子进程。
+- 常驻选择器预热只是可选性能优化；除退出信号外的启动异常只能记录警告，不能阻断 WebUI 生命周期，失败宿主仍允许在用户点击时按既有调用重试。
+- 统一图像格式导出只作用于新创建的复制导出输出；不得改写源图片、已有导出树、已有运行记录或人工审核决定。
+- 缺少统一格式字段的旧导出运行必须保持原格式复制和原有恢复能力；JPEG 透明像素固定铺白，PNG/WebP 保留透明，不新增质量调节控件、依赖或数据库迁移。
+- 统一格式转换遇到同目录同 stem 的异扩展名样本时，必须以确定性目标名保留每个图像及其配对标注；不得因路径或相同哈希静默去重、丢样本或误报预览计数。
+- 当用户已经位于 `#risks`、`#style`、`#duplicates` 或 `#aesthetics` 时，`evidence_review` 提示不得覆盖审计控件；其他路由的提示语义、审核接口和人工决定保持不变。

@@ -334,7 +334,7 @@ function LocalModelDialog({
       </div>
       <div className="modal-actions">
         <button className="button secondary" disabled={busy || pickerBusy} onClick={onClose} type="button">取消</button>
-        <button className="button primary" disabled={busy || !path.trim() || !base} onClick={() => void submit()} type="button">
+        <button className="button primary" disabled={busy || pickerBusy || !path.trim() || !base} onClick={() => void submit()} type="button">
           <FileInput size={16} />
           导入并校验
         </button>
