@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
+from time import monotonic
 
 from sqlalchemy import func, select
 
@@ -42,6 +43,8 @@ from dataset_audit_studio.scanner.types import (
 )
 
 SCAN_ALGORITHM_VERSION = "dataset_scanner_v1"
+SCAN_WRITE_BATCH_TARGET = 256
+HEARTBEAT_INTERVAL_SECONDS = 30.0
 COUNTER_KEYS = (
     "processed",
     "valid",
@@ -49,6 +52,13 @@ COUNTER_KEYS = (
     "decode_errors",
     "source_changed",
 )
+
+
+def _write_batch_size(inference_batch_size: int, *, target: int) -> int:
+    return max(
+        inference_batch_size,
+        ((target + inference_batch_size - 1) // inference_batch_size) * inference_batch_size,
+    )
 
 
 def _builtin_profile(task_config: dict) -> DatasetProfile | None:
@@ -147,6 +157,12 @@ class DatasetScanner:
         active_paths = {item.relative_path for item in discovery.items}
         extracted_root = self.project_root / "data" / "tasks" / task.id / "extracted_frames"
         first_config_batch = not checkpoints
+        write_batch_size = _write_batch_size(config.batch_size, target=SCAN_WRITE_BATCH_TARGET)
+        committed_counters = dict(counters)
+        pending_counters = dict(counters)
+        pending_items: list[ScannedMedia] = []
+        pending_end = start_index
+        last_heartbeat = monotonic()
 
         ranges = list(range(start_index, len(discovery.items), config.batch_size))
         if not ranges and first_config_batch:
@@ -169,19 +185,52 @@ class DatasetScanner:
                         source_batch,
                     )
                 )
+                pending_items.extend(scanned)
                 for item in scanned:
-                    self._add_counts(counters, item)
+                    self._add_counts(pending_counters, item)
+                pending_end = batch_end
+
+                current = self.tasks.get_task(task.id)
+                if current.status == TaskStatus.TERMINATED.value:
+                    return self._summary(
+                        task.id,
+                        manifest,
+                        committed_counters,
+                        resumed_from,
+                        current.status,
+                    )
+                control_pending = current.status in {
+                    TaskStatus.PAUSING.value,
+                    TaskStatus.TERMINATING.value,
+                }
+                flush_pending = (
+                    len(pending_items) >= write_batch_size
+                    or control_pending
+                    or batch_end == len(discovery.items)
+                )
+                if not flush_pending and monotonic() - last_heartbeat >= HEARTBEAT_INTERVAL_SECONDS:
+                    try:
+                        self.tasks.heartbeat(token, lease_seconds=300)
+                    except StaleWorkerToken:
+                        current = self.tasks.get_task(task.id)
+                        return self._summary(
+                            task.id, manifest, committed_counters, resumed_from, current.status
+                        )
+                    last_heartbeat = monotonic()
+                    continue
+                if not flush_pending:
+                    continue
 
                 cursor = self._cursor(
                     manifest,
-                    next_index=batch_end,
-                    counters=counters,
+                    next_index=pending_end,
+                    counters=pending_counters,
                 )
 
                 def write_batch(
                     session,
                     *,
-                    batch_items=scanned,
+                    batch_items=tuple(pending_items),
                     prepare=first_config_batch,
                 ) -> None:
                     if prepare:
@@ -208,7 +257,7 @@ class DatasetScanner:
                         phase=TaskStatus.SCANNING,
                         config_hash=task.config_hash,
                         batch_index=batch_index,
-                        completed_items=batch_end,
+                        completed_items=pending_end,
                         progress_total=len(discovery.items),
                         cursor=cursor,
                         lease_seconds=300,
@@ -217,19 +266,19 @@ class DatasetScanner:
                 except StaleWorkerToken:
                     current = self.tasks.get_task(task.id)
                     return self._summary(
-                        task.id,
-                        manifest,
-                        counters,
-                        resumed_from,
-                        current.status,
+                        task.id, manifest, committed_counters, resumed_from, current.status
                     )
+                committed_counters = dict(pending_counters)
+                counters = committed_counters
+                pending_items.clear()
                 first_config_batch = False
                 batch_index += 1
+                last_heartbeat = monotonic()
                 if result.control_state != "continue":
                     return self._summary(
                         task.id,
                         manifest,
-                        counters,
+                        committed_counters,
                         resumed_from,
                         result.task.status,
                     )
@@ -242,7 +291,7 @@ class DatasetScanner:
             cursor=self._cursor(
                 manifest,
                 next_index=len(discovery.items),
-                counters=counters,
+                counters=committed_counters,
             ),
         )
         return self._summary(

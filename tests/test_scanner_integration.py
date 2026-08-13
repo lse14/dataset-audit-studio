@@ -19,6 +19,7 @@ from dataset_audit_studio.database.models import (
 )
 from dataset_audit_studio.database.session import Database
 from dataset_audit_studio.jobs.service import TaskService
+from dataset_audit_studio.scanner import service as scanner_service
 from dataset_audit_studio.scanner.metrics import METRICS_ALGORITHM_VERSION
 from dataset_audit_studio.scanner.repository import prepare_scan, upsert_scanned_batch
 from dataset_audit_studio.scanner.service import SCAN_ALGORITHM_VERSION, DatasetScanner
@@ -179,6 +180,132 @@ def test_scanner_pause_resume_uses_manifest_checkpoint(
     assert resumed.processed == 2
     assert resumed.final_status == TaskStatus.QUEUED.value
     assert _source_snapshot(source) == before
+
+
+def test_scanner_groups_complete_decode_batches_into_one_atomic_write(
+    database: Database,
+    task_service: TaskService,
+    isolated_scanner_root: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    for index, color in enumerate(("red", "blue", "green", "purple", "orange")):
+        _save(source / f"{index}.png", color)
+    queued = _queued_scan(task_service, source, batch_size=2)
+    claimed = task_service.claim_next(owner="scanner", lease_seconds=120)
+    assert claimed is not None
+    commits: list[dict[str, object]] = []
+    original_commit = task_service.commit_batch
+
+    def record_commit(*args, **kwargs):
+        commits.append(dict(kwargs))
+        return original_commit(*args, **kwargs)
+
+    monkeypatch.setattr(task_service, "commit_batch", record_commit)
+    summary = DatasetScanner(task_service, project_root=isolated_scanner_root).run_scanning(
+        claimed.token
+    )
+
+    data_commits = [item for item in commits if item.get("batch_writer") is not None]
+    assert summary.processed == 5
+    assert len(data_commits) == 1
+    assert data_commits[0]["cursor"]["next_index"] == 5
+    with database.read_session() as session:
+        assert (
+            session.scalar(
+                select(func.count()).select_from(Sample).where(Sample.task_id == queued.id)
+            )
+            == 5
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(PhaseCheckpoint)
+                .where(PhaseCheckpoint.task_id == queued.id)
+            )
+            == 1
+        )
+
+
+def test_scanner_pause_flushes_validated_prefix_and_resumes_from_committed_index(
+    task_service: TaskService,
+    isolated_scanner_root: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    for index, color in enumerate(("red", "blue", "green", "purple", "orange")):
+        _save(source / f"{index}.png", color)
+    queued = _queued_scan(task_service, source, batch_size=2)
+    claimed = task_service.claim_next(owner="scanner", lease_seconds=120)
+    assert claimed is not None
+    scanner = DatasetScanner(task_service, project_root=isolated_scanner_root)
+    original = scanner._scan_one
+    scanned = 0
+
+    def scan_then_pause(*args, **kwargs):
+        nonlocal scanned
+        result = original(*args, **kwargs)
+        scanned += 1
+        if scanned == 4:
+            task_service.request_pause(queued.id)
+        return result
+
+    monkeypatch.setattr(scanner, "_scan_one", scan_then_pause)
+    paused = scanner.run_scanning(claimed.token)
+
+    assert paused.processed == 4
+    assert paused.final_status == TaskStatus.PAUSED.value
+    task_service.resume_task(queued.id)
+    resumed_token = task_service.claim_next(owner="scanner-resume", lease_seconds=120)
+    assert resumed_token is not None
+    monkeypatch.setattr(scanner, "_scan_one", original)
+    resumed = scanner.run_scanning(resumed_token.token)
+    assert resumed.resumed_from_index == 4
+    assert resumed.processed == 5
+
+
+def test_scanner_write_failure_rolls_back_aggregated_rows_and_checkpoint(
+    database: Database,
+    task_service: TaskService,
+    isolated_scanner_root: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    _save(source / "a.png", "red")
+    _save(source / "b.png", "blue")
+    queued = _queued_scan(task_service, source, batch_size=2)
+    claimed = task_service.claim_next(owner="scanner", lease_seconds=120)
+    assert claimed is not None
+
+    def fail_upsert(*_args, **_kwargs):
+        raise RuntimeError("injected scan write failure")
+
+    monkeypatch.setattr(scanner_service, "upsert_scanned_batch", fail_upsert)
+    with pytest.raises(RuntimeError, match="injected scan write failure"):
+        DatasetScanner(task_service, project_root=isolated_scanner_root).run_scanning(claimed.token)
+
+    with database.read_session() as session:
+        assert (
+            session.scalar(
+                select(func.count()).select_from(Sample).where(Sample.task_id == queued.id)
+            )
+            == 0
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(PhaseCheckpoint)
+                .where(PhaseCheckpoint.task_id == queued.id)
+            )
+            == 0
+        )
+    assert task_service.get_task(queued.id).progress_current == 0
 
 
 def test_manifest_sha_tampering_blocks_resume(

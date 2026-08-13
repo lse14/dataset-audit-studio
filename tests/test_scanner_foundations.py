@@ -14,6 +14,7 @@ from dataset_audit_studio.scanner.metrics import (
     pixel_sha256,
 )
 from dataset_audit_studio.scanner.resolution import assess_resolutions
+from dataset_audit_studio.scanner.service import _write_batch_size
 from dataset_audit_studio.scanner.types import MetricEvidence
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -68,6 +69,30 @@ def test_discovery_ignores_annotation_files(tmp_path: Path) -> None:
     result = discover_media(source, ScanConfig())
     assert result.items == ()
     assert not hasattr(result, "orphan_caption_count")
+
+
+def test_scan_write_batch_size_is_private_derived_policy() -> None:
+    config = ScanConfig()
+
+    assert config.batch_size == 64
+    assert "write_batch_size" not in config.model_dump()
+    assert "write_batch_size" not in config.cache_payload()
+    assert _write_batch_size(64, target=256) == 256
+    assert _write_batch_size(300, target=256) == 300
+
+
+@pytest.mark.parametrize(
+    ("inference_batch", "expected_writes"),
+    [(64, 391), (300, 334)],
+    ids=["batch64_target256", "batch300_target256"],
+)
+def test_100k_scan_write_batch_schedule_has_deterministic_transaction_count(
+    inference_batch: int,
+    expected_writes: int,
+) -> None:
+    flush_size = _write_batch_size(inference_batch, target=256)
+
+    assert (100_000 + flush_size - 1) // flush_size == expected_writes
 
 
 @pytest.mark.parametrize("resolution", DEFAULT_RESOLUTIONS)

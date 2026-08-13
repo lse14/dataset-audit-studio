@@ -6,6 +6,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from PIL import Image, ImageOps
@@ -62,8 +63,17 @@ SCORING_COMPONENT_KEYS = {
 }
 MODULAR_SCORING_COMPONENT_IDS = frozenset((CLIP_COMPONENT_ID, *SCORING_COMPONENT_KEYS))
 CLIP_PREPROCESSING_VERSION = "openai-clip-l14-dual-preprocess-v1"
+SCORING_WRITE_BATCH_TARGET = 64
+HEARTBEAT_INTERVAL_SECONDS = 30.0
 
 RuntimeFactory = Callable[[ScoringConfig, RuntimeAssets], Any]
+
+
+def _write_batch_size(inference_batch_size: int, *, target: int) -> int:
+    return max(
+        inference_batch_size,
+        ((target + inference_batch_size - 1) // inference_batch_size) * inference_batch_size,
+    )
 
 
 @dataclass(frozen=True)
@@ -202,6 +212,13 @@ class ModularScoringComponentService:
         component_index = component_order.index(component_id)
         total_progress = len(samples) * len(component_order)
         progress_floor = task.progress_current
+        write_batch_size = _write_batch_size(config.batch_size, target=SCORING_WRITE_BATCH_TARGET)
+        pending_scores: list[SampleScore] = []
+        pending_shards: list[dict[str, str]] = []
+        pending_end = processed
+        pending_inferred = inferred
+        pending_cached = cached_count
+        last_heartbeat = monotonic()
 
         try:
             for batch_start in ranges:
@@ -220,7 +237,7 @@ class ModularScoringComponentService:
                         require_registered=False,
                     )
                     if clip_shard is not None:
-                        cached_count += len(batch)
+                        pending_cached += len(batch)
                     elif batch:
                         if runtime is None:
                             runtime = self._runtime(component_id, component_config, assets)
@@ -242,7 +259,7 @@ class ModularScoringComponentService:
                             model_digest=clip_model_digest,
                             preprocessing_version=CLIP_PREPROCESSING_VERSION,
                         )
-                        inferred += len(batch)
+                        pending_inferred += len(batch)
                 else:
                     assert legacy_key is not None and identity is not None
                     identities = {legacy_key: identity}
@@ -259,7 +276,8 @@ class ModularScoringComponentService:
                             )
                             for sample in batch
                         )
-                        cached_count += len(batch)
+                        self._require_finite([score.results for score in scores])
+                        pending_cached += len(batch)
                     elif batch:
                         if runtime is None:
                             runtime = self._runtime(component_id, component_config, assets)
@@ -282,20 +300,72 @@ class ModularScoringComponentService:
                             for sample, value in zip(batch, values, strict=True)
                         )
                         self._require_finite([score.results for score in scores])
-                        inferred += len(batch)
+                        pending_inferred += len(batch)
 
-                processed = batch_end
-                complete = batch_end == len(samples)
+                pending_scores.extend(scores)
+                if clip_shard is not None:
+                    pending_shards.append(
+                        {
+                            "cache_key": clip_shard.cache_key,
+                            "relative_path": clip_shard.relative_path,
+                            "sha256": clip_shard.sha256,
+                        }
+                    )
+                pending_end = batch_end
+                current = self.tasks.get_task(task.id)
+                if current.status == TaskStatus.TERMINATED.value:
+                    return self._summary(
+                        task.id,
+                        component_id,
+                        samples,
+                        processed,
+                        inferred,
+                        cached_count,
+                        resumed_from,
+                        False,
+                        current.status,
+                    )
+                control_pending = current.status in {
+                    TaskStatus.PAUSING.value,
+                    TaskStatus.TERMINATING.value,
+                }
+                flush_pending = (
+                    pending_end - processed >= write_batch_size
+                    or control_pending
+                    or pending_end == len(samples)
+                )
+                if not flush_pending and monotonic() - last_heartbeat >= HEARTBEAT_INTERVAL_SECONDS:
+                    try:
+                        self.tasks.heartbeat(token, lease_seconds=300)
+                    except StaleWorkerToken:
+                        current = self.tasks.get_task(task.id)
+                        return self._summary(
+                            task.id,
+                            component_id,
+                            samples,
+                            processed,
+                            inferred,
+                            cached_count,
+                            resumed_from,
+                            False,
+                            current.status,
+                        )
+                    last_heartbeat = monotonic()
+                    continue
+                if not flush_pending:
+                    continue
+
+                complete = pending_end == len(samples)
                 next_results_prepared = results_prepared or component_id != CLIP_COMPONENT_ID
                 cursor = {
                     "modular_scoring": True,
                     "component_id": component_id,
                     "component_order": list(component_order),
-                    "next_index": batch_end,
+                    "next_index": pending_end,
                     "component_complete": complete,
                     "identity_digest": identity_digest,
-                    "inferred_samples": inferred,
-                    "cached_samples": cached_count,
+                    "inferred_samples": pending_inferred,
+                    "cached_samples": pending_cached,
                     "results_prepared": next_results_prepared,
                 }
                 if component_id == CLIP_COMPONENT_ID:
@@ -306,17 +376,24 @@ class ModularScoringComponentService:
                             "feature_capabilities": list(capabilities),
                         }
                     )
-                if clip_shard is not None:
-                    cursor["feature_shard"] = {
-                        "cache_key": clip_shard.cache_key,
-                        "relative_path": clip_shard.relative_path,
-                        "sha256": clip_shard.sha256,
-                    }
+                if pending_shards:
+                    descriptors = list(
+                        dict.fromkeys(
+                            (item["cache_key"], item["relative_path"], item["sha256"])
+                            for item in pending_shards
+                        )
+                    )
+                    cursor["feature_shards"] = [
+                        {"cache_key": key, "relative_path": path, "sha256": sha256}
+                        for key, path, sha256 in descriptors
+                    ]
+                    if len(cursor["feature_shards"]) == 1:
+                        cursor["feature_shard"] = cursor["feature_shards"][0]
 
                 def write_batch(
                     session,
                     *,
-                    current_scores=scores,
+                    current_scores=tuple(pending_scores),
                     prepare=not results_prepared and component_id != CLIP_COMPONENT_ID,
                 ) -> None:
                     if component_id == CLIP_COMPONENT_ID:
@@ -331,22 +408,42 @@ class ModularScoringComponentService:
                         prepare=prepare,
                     )
 
-                logical_progress = component_index * len(samples) + batch_end
+                logical_progress = component_index * len(samples) + pending_end
                 completed_items = max(progress_floor, logical_progress)
                 progress_total = max(progress_floor, total_progress)
-                result = self.tasks.commit_batch(
-                    token,
-                    phase=TaskStatus.MODEL_SCORING,
-                    config_hash=task.config_hash,
-                    batch_index=batch_index,
-                    completed_items=completed_items,
-                    progress_total=progress_total,
-                    cursor=cursor,
-                    lease_seconds=300,
-                    batch_writer=write_batch,
-                )
+                try:
+                    result = self.tasks.commit_batch(
+                        token,
+                        phase=TaskStatus.MODEL_SCORING,
+                        config_hash=task.config_hash,
+                        batch_index=batch_index,
+                        completed_items=completed_items,
+                        progress_total=progress_total,
+                        cursor=cursor,
+                        lease_seconds=300,
+                        batch_writer=write_batch,
+                    )
+                except StaleWorkerToken:
+                    current = self.tasks.get_task(task.id)
+                    return self._summary(
+                        task.id,
+                        component_id,
+                        samples,
+                        processed,
+                        inferred,
+                        cached_count,
+                        resumed_from,
+                        False,
+                        current.status,
+                    )
+                processed = pending_end
+                inferred = pending_inferred
+                cached_count = pending_cached
+                pending_scores.clear()
+                pending_shards.clear()
                 batch_index += 1
                 results_prepared = next_results_prepared
+                last_heartbeat = monotonic()
                 if result.control_state != "continue":
                     return self._summary(
                         task.id,
@@ -536,23 +633,48 @@ class ModularScoringComponentService:
         identities: set[tuple[str, str]] = set()
         for checkpoint in checkpoints:
             cursor = checkpoint.cursor
-            descriptor = cursor.get("feature_shard")
-            if (
+            if not (
                 cursor.get("modular_scoring") is True
                 and cursor.get("component_id") == CLIP_COMPONENT_ID
-                and isinstance(descriptor, dict)
-                and descriptor.get("cache_key") == cache_key
             ):
-                sha256 = descriptor.get("sha256")
-                relative_path = descriptor.get("relative_path")
-                if not isinstance(sha256, str) or not isinstance(relative_path, str):
-                    raise RuntimeError("CLIP feature checkpoint identity is invalid")
-                identities.add((sha256, relative_path))
+                continue
+            for descriptor in ModularScoringComponentService._clip_descriptors(cursor):
+                if descriptor["cache_key"] == cache_key:
+                    identities.add((descriptor["sha256"], descriptor["relative_path"]))
         if not identities:
             return None
         if len(identities) != 1:
             raise RuntimeError("CLIP feature checkpoint identities conflict")
         return identities.pop()
+
+    @staticmethod
+    def _clip_descriptors(cursor: dict[str, Any]) -> tuple[dict[str, str], ...]:
+        raw_descriptors = cursor.get("feature_shards")
+        if raw_descriptors is None:
+            raw_descriptors = []
+        if not isinstance(raw_descriptors, list):
+            raise RuntimeError("CLIP feature checkpoint identity is invalid")
+        if "feature_shard" in cursor:
+            raw_descriptors = [*raw_descriptors, cursor.get("feature_shard")]
+        descriptors: list[dict[str, str]] = []
+        for descriptor in raw_descriptors:
+            if not isinstance(descriptor, dict):
+                raise RuntimeError("CLIP feature checkpoint identity is invalid")
+            cache_key = descriptor.get("cache_key")
+            sha256 = descriptor.get("sha256")
+            relative_path = descriptor.get("relative_path")
+            if not all(
+                isinstance(item, str) for item in (cache_key, sha256, relative_path)
+            ):
+                raise RuntimeError("CLIP feature checkpoint identity is invalid")
+            descriptors.append(
+                {
+                    "cache_key": cache_key,
+                    "relative_path": relative_path,
+                    "sha256": sha256,
+                }
+            )
+        return tuple(descriptors)
 
     def _infer(
         self,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 
 import pytest
+from dataset_audit_studio.app.modular_scoring import _write_batch_size
 from dataset_audit_studio.scoring.assets import build_component_identities
 from dataset_audit_studio.scoring.config import ScoringConfig
 from dataset_audit_studio.scoring.policy import evidence_for_result
@@ -71,6 +72,15 @@ def test_scoring_config_is_explicit_and_rejects_inverted_ai_thresholds() -> None
                 }
             }
         )
+
+
+def test_scoring_write_batch_size_is_private_derived_policy() -> None:
+    config = ScoringConfig()
+
+    assert config.batch_size == 1
+    assert "write_batch_size" not in config.model_dump()
+    assert _write_batch_size(1, target=64) == 64
+    assert _write_batch_size(256, target=64) == 256
 
 
 def test_component_identity_covers_every_exact_asset_hash() -> None:
