@@ -650,3 +650,22 @@ Restore the local WebUI startup after removing obsolete local runtime data and r
 - 10 万级验收只预先锁定可计算的事务/checkpoint 数量及实际行数一致性；耗时和提升比例必须由实施后的临时 SQLite 基准实测，不预填性能数字。
 - 验证结果：Task 10 core `55 passed, 1 skipped`，focused `89 passed, 1 skipped`，Ruff 通过，`git diff --check` 通过。
 - 残余风险：本轮未运行真实模型/10 万样本吞吐基准、超过 30 秒的时钟 heartbeat 情形及跨进程强停的真实 OS 时序；不得据此宣称性能提升。
+
+## 全项目缺陷扫描与过时合同修复（2026-08-15）
+
+- [x] 使用项目内 Python、Node 和 Playwright 浏览器运行后端、前端与 E2E 基线，排除未初始化隔离变量造成的环境误报。
+- [x] 定位唯一稳定失败为 `tests/test_r10_1_contract.py` 与当前语义重复默认配置互相矛盾。
+- [x] 以提交 `3396197`、`test_profile_contracts.py` 和现行 profile 约束为证据，确认生产默认启用是已确认行为；仅修正遗漏的旧 R10.1 测试名称、断言和无效显式赋值。
+- [x] 运行完整后端、Ruff、组件边界、第三方报告、前端单测、生产构建和 Playwright E2E，并检查最终差异与临时产物。
+
+### 验收标准
+
+- general profile 的 `embedding.semantic` 与 `cluster.hierarchy` 继续默认启用，artist/character profile 和显式配置行为不变。
+- 全量后端不再保留已知 R10.1 失败；前端单测、生产构建和 44 条 E2E 均通过。
+- 不增加依赖、不修改数据库/模型/用户数据；最终提交只包含合同测试和项目记录。
+
+### 验证结果
+
+- 最终完整后端 Pytest 运行至 `100%`，退出码 `0`，仅有 1 个预期 skip；R10.1 与 profile 合同聚焦回归为 `12 passed`。
+- Ruff、组件导入边界和第三方依赖报告均通过；前端单测 `137 passed`，生产 TypeScript/Vite 构建通过，Playwright E2E `44 passed`。
+- 本轮 9 个 `.test-tmp` 临时目录已精确删除；`4174` 与 `7865` 均无监听，未遗留测试或 WebUI 服务。

@@ -15,13 +15,13 @@ from dataset_audit_studio.database.models import Sample
 from dataset_audit_studio.jobs.service import TaskService
 
 
-def test_r10_1_catalog_and_profiles_remove_three_stage_and_disable_semantic_by_default() -> None:
+def test_r10_1_catalog_removes_three_stage_and_keeps_semantic_review_defaults() -> None:
     assert "selection.three_stage" not in BUILTIN_COMPONENT_REGISTRATION_CATALOG.component_ids
     materialized = materialize_profile(DatasetProfile.GENERAL)
     components = materialized["components"]
     assert "selection.three_stage" not in components
-    assert components["embedding.semantic"]["enabled"] is False
-    assert components["cluster.hierarchy"]["enabled"] is False
+    assert components["embedding.semantic"]["enabled"] is True
+    assert components["cluster.hierarchy"]["enabled"] is True
 
 
 def test_r10_1_task_status_removes_stage_selection() -> None:
@@ -73,10 +73,8 @@ def test_r10_1_old_stage_input_fails_closed() -> None:
         )
 
 
-def test_r10_1_semantic_requires_explicit_advanced_enable() -> None:
+def test_r10_1_semantic_defaults_enable_clustering() -> None:
     profile = materialize_profile("general")
-    profile["components"]["embedding.semantic"]["enabled"] = True
-    profile["components"]["cluster.hierarchy"]["enabled"] = True
     materialized = ComponentTaskConfigMaterializer().materialize(
         profile["components"], profile="general", require_profile=True
     )

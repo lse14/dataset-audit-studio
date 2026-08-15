@@ -328,3 +328,12 @@
 - 合作式暂停/终止在完整 inference batch 后提交已验证前缀；现有 subprocess supervisor 强停时不承诺 flush，未提交内存丢弃并从最后 committed `next_index` 恢复。评分父进程现有 30 秒 heartbeat 保留；直接扫描/inline scoring 超过 30 秒未 flush 时只续租、不推进 checkpoint。
 - Task 10 已补齐 scanner、CLIP、aesthetic、Community/UFD AI、OCR、watermark、混合 cache hit、finite guard、`results_prepared`、`component_complete`、原子 rollback、强停/恢复及 100,000 项确定性事务计数。性能基准只记录实施后的实际耗时/事务/行数，不预设或虚构 speedup。
 - 状态：企划 `[x]`；生产实现与测试 `[x]`。core `55 passed, 1 skipped`，focused `89 passed, 1 skipped`，Ruff 通过；真实 10 万样本吞吐基准与跨进程强停时序仍待单独验证。
+
+## Full-project Bug Scan and Stale Contract Fix (2026-08-15)
+
+- 用户要求扫描整个项目，随后确认修复全部已证实缺陷并推送到 `main`。
+- 正确初始化项目隔离变量后，完整后端测试只有 `tests/test_r10_1_contract.py:23` 失败；前端 `137` 条单测、生产构建和项目内 Chromium 的 `44` 条 E2E 基线通过。
+- 提交 `3396197` 明确将三个 profile 的 semantic embedding 与 hierarchy 默认改为启用，并同步 `tests/test_profile_contracts.py`；初版 R10.1 测试未同步，是矛盾合同的根因。
+- 生产 profile 约束保持不变；修复仅更新旧 R10.1 测试的名称、True 断言，并删除已经默认为 True 的无效显式赋值。
+- 最终完整后端 Pytest 运行至 `100%` 且退出码为 `0`，仅有 1 个预期 skip；Ruff、组件边界、第三方报告、前端 `137` 条单测、生产构建和 `44` 条 E2E 均通过。
+- 本轮 9 个 `.test-tmp` 目录已精确清理，`4174`/`7865` 无监听；提交与推送结果以 Git 历史记录核验，不在提交前预填哈希。
