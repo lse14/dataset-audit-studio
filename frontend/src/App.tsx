@@ -28,7 +28,7 @@ import {
   type CompletionPrompt,
 } from './taskStatusPrompt'
 import type { PageId, Task } from './types'
-import { LoadingBlock, Modal } from './ui'
+import { LoadingBlock, Modal, statusLabel } from './ui'
 
 const SystemPage = lazy(async () => ({
   default: (await import('./pages/SystemPage')).SystemPage,
@@ -64,30 +64,44 @@ type PageDefinition = {
   title: string
   subtitle: string
   icon: typeof Gauge
+  section: 'MISSION' | 'ANALYSIS' | 'OUTPUT' | 'SYSTEM'
+  sequence: string
 }
 
 const primaryPages: PageDefinition[] = [
-  { id: 'tasks', label: '任务', title: '任务', subtitle: '数据路径与处理配置', icon: FolderSearch },
-  { id: 'progress', label: '进度', title: '进度', subtitle: '阶段、控制与事件', icon: ClipboardCheck },
+  { id: 'tasks', label: '任务', title: '任务', subtitle: '数据路径与处理配置', icon: FolderSearch, section: 'MISSION', sequence: '01' },
+  { id: 'progress', label: '进度', title: '进度', subtitle: '阶段、控制与事件', icon: ClipboardCheck, section: 'MISSION', sequence: '02' },
 ]
 
 const auditPages: PageDefinition[] = [
-  { id: 'risks', label: '风险', title: '风险证据', subtitle: '检测证据与筛选影响', icon: ShieldAlert },
-  { id: 'style', label: '画风', title: '画风审计', subtitle: '按子文件夹复核画风离群候选', icon: Palette },
-  { id: 'duplicates', label: '重复', title: '重复审计', subtitle: '按组复核', icon: Copy },
-  { id: 'aesthetics', label: '美学', title: '美学审计', subtitle: '按子文件夹复核美学候选', icon: Sparkles },
+  { id: 'risks', label: '风险', title: '风险证据', subtitle: '检测证据与筛选影响', icon: ShieldAlert, section: 'ANALYSIS', sequence: '03' },
+  { id: 'style', label: '画风', title: '画风审计', subtitle: '按子文件夹复核画风离群候选', icon: Palette, section: 'ANALYSIS', sequence: '04' },
+  { id: 'duplicates', label: '重复', title: '重复审计', subtitle: '按组复核', icon: Copy, section: 'ANALYSIS', sequence: '05' },
+  { id: 'aesthetics', label: '美学', title: '美学审计', subtitle: '按子文件夹复核美学候选', icon: Sparkles, section: 'ANALYSIS', sequence: '06' },
 ]
 
 const exportPage: PageDefinition = {
-  id: 'exports', label: '导出', title: '导出', subtitle: '单数据集 copy 导出与输出状态', icon: FolderOutput,
+  id: 'exports', label: '导出', title: '导出', subtitle: '单数据集 copy 导出与输出状态', icon: FolderOutput, section: 'OUTPUT', sequence: '07',
 }
 
 const utilityPages: PageDefinition[] = [
-  { id: 'models', label: '模型', title: '模型', subtitle: '下载、校验与本地替换', icon: Database },
-  { id: 'system', label: '系统', title: '系统状态', subtitle: '本地运行时与 Worker', icon: Gauge },
+  { id: 'models', label: '模型', title: '模型', subtitle: '下载、校验与本地替换', icon: Database, section: 'SYSTEM', sequence: '08' },
+  { id: 'system', label: '系统', title: '系统状态', subtitle: '本地运行时与 Worker', icon: Gauge, section: 'SYSTEM', sequence: '09' },
 ]
 
 const pages = [...primaryPages, ...auditPages, exportPage, ...utilityPages]
+const navigationGroups = {
+  mission: primaryPages,
+  analysis: auditPages,
+  output: [exportPage],
+  system: utilityPages,
+} as const
+const navigationGroupLabels: Record<keyof typeof navigationGroups, string> = {
+  mission: '任务',
+  analysis: '审计',
+  output: '输出',
+  system: '系统',
+}
 const auditPageIds = new Set<PageId>(auditPages.map((item) => item.id))
 const legacyPageAliases: Record<string, PageId> = {
   guide: 'tasks',
@@ -277,6 +291,11 @@ export default function App() {
     navigate(target)
   }
   const active = pages.find((item) => item.id === page) ?? primaryPages[0]
+  const selectedTaskName = selectedTask?.name ?? '未选择'
+  const selectedTaskStatus = selectedTask ? statusLabel(selectedTask.status) : '未选择'
+  const workerStatus = health
+    ? (health.worker.running ? statusLabel('running') : '已停止')
+    : '未知'
   const onTaskChanged = async (updated?: Task) => {
     if (updated && !isBuiltinProfileTask(updated)) {
       await reloadTasks()
@@ -311,7 +330,8 @@ export default function App() {
         title={item.label}
         type="button"
       >
-        <Icon size={18} strokeWidth={1.8} />
+        <span aria-hidden="true" className="nav-sequence">{item.sequence}</span>
+        <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
         <span>{item.label}</span>
       </button>
     )
@@ -325,14 +345,17 @@ export default function App() {
           <span>Dataset Audit Studio</span>
         </button>
         <nav aria-label="主导航">
-          {primaryPages.map((item) => renderNavItem(item))}
-          <div aria-label="审计" className="nav-section" role="group">
-            <span className="nav-section-label">审计</span>
-            {auditPages.map((item) => renderNavItem(item, true))}
-          </div>
-          {renderNavItem(exportPage)}
-          <div aria-hidden="true" className="nav-divider" />
-          {utilityPages.map((item) => renderNavItem(item))}
+          {(Object.entries(navigationGroups) as Array<[keyof typeof navigationGroups, readonly PageDefinition[]]>).map(([group, groupPages]) => (
+            <div aria-label={group} className={`nav-section nav-section-${group}`} key={group} role="group">
+              {group === 'analysis' ? (
+                <span className="nav-section-label">审计</span>
+              ) : (
+                <span className="nav-section-label">{navigationGroupLabels[group]}</span>
+              )}
+              {groupPages.map((item) => renderNavItem(item, group === 'analysis'))}
+              {group === 'output' ? <div aria-hidden="true" className="nav-divider" /> : null}
+            </div>
+          ))}
         </nav>
         <div className="sidebar-status">
           <i className={health?.worker.running ? 'online' : ''} />
@@ -341,27 +364,13 @@ export default function App() {
         <div className="version-label">v{health?.app_version ?? '0.1.0'}</div>
       </aside>
 
-      <main>
+      <main className="workspace-main">
         <header className="topbar">
           <div className="page-title">
-            <span>{active.subtitle}</span>
+            <span>{active.section} / {active.label}</span>
             <h1>{active.title}</h1>
           </div>
           <div className="topbar-actions">
-            {page !== 'system' ? (
-              <label className="task-selector">
-                <span>任务</span>
-                <select
-                  onChange={(event) => setSelectedTaskId(event.target.value || null)}
-                  value={selectedTaskId ?? ''}
-                >
-                  <option value="">未选择</option>
-                  {tasks.map((task) => (
-                    <option key={task.id} value={task.id}>{task.name}</option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
             <button
               aria-label="刷新当前页面"
               className="icon-button"
@@ -374,8 +383,25 @@ export default function App() {
           </div>
         </header>
 
+        <section aria-label="工作区摘要" className="workspace-summary">
+          <div>
+            <span>当前任务</span>
+            <strong>{selectedTaskName}</strong>
+          </div>
+          <div>
+            <span>任务状态</span>
+            <strong>{selectedTaskStatus}</strong>
+          </div>
+          <div>
+            <span>Worker</span>
+            <strong>{workerStatus}</strong>
+          </div>
+        </section>
+
         <div className="content">
-          <Suspense fallback={<LoadingBlock label="正在加载页面" />}>
+          <div className="workbench-grid">
+            <section className="workbench-primary">
+              <Suspense fallback={<LoadingBlock label="正在加载页面" />}>
             {page === 'system' ? (
               <SystemPage error={healthError} health={health} loading={healthLoading} />
             ) : null}
@@ -453,7 +479,41 @@ export default function App() {
                 task={selectedTask}
               />
             ) : null}
-          </Suspense>
+              </Suspense>
+            </section>
+            <aside className="workbench-context">
+              <span className="context-eyebrow">CURRENT CONTEXT</span>
+              <h2>{active.title}</h2>
+              <dl>
+                <div>
+                  <dt>Task ID</dt>
+                  <dd>{selectedTask?.id ?? '未选择'}</dd>
+                </div>
+                <div>
+                  <dt>Task state</dt>
+                  <dd>{selectedTaskStatus}</dd>
+                </div>
+                <div>
+                  <dt>Worker</dt>
+                  <dd>{workerStatus}</dd>
+                </div>
+              </dl>
+              {page !== 'system' ? (
+                <label className="task-selector">
+                  <span>任务</span>
+                  <select
+                    onChange={(event) => setSelectedTaskId(event.target.value || null)}
+                    value={selectedTaskId ?? ''}
+                  >
+                    <option value="">未选择</option>
+                    {tasks.map((task) => (
+                      <option key={task.id} value={task.id}>{task.name}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </aside>
+          </div>
         </div>
       </main>
 
