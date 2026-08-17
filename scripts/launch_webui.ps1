@@ -6,9 +6,24 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "common.ps1")
+$paths = Initialize-ProjectEnvironment
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $startScript = Join-Path $PSScriptRoot "start.ps1"
+$npm = Join-Path $paths.Node "npm.cmd"
 $url = "http://127.0.0.1:$Port"
+
+if (-not (Test-Path -LiteralPath $npm)) {
+    throw "Project Node runtime is missing. Run .\setup.bat first."
+}
+
+Push-Location $projectRoot
+try {
+    Invoke-Checked $npm --prefix frontend run build
+}
+finally {
+    Pop-Location
+}
 
 function Get-ReportedProjectRoot {
     <#

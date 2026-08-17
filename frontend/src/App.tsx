@@ -352,7 +352,7 @@ export default function App() {
               ) : (
                 <span className="nav-section-label">{navigationGroupLabels[group]}</span>
               )}
-              {groupPages.map((item) => renderNavItem(item, group === 'analysis'))}
+              {groupPages.map((item) => renderNavItem(item, group === 'analysis' && item.id !== 'aesthetics'))}
               {group === 'output' ? <div aria-hidden="true" className="nav-divider" /> : null}
             </div>
           ))}

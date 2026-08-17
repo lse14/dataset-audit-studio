@@ -336,4 +336,74 @@
 - 提交 `3396197` 明确将三个 profile 的 semantic embedding 与 hierarchy 默认改为启用，并同步 `tests/test_profile_contracts.py`；初版 R10.1 测试未同步，是矛盾合同的根因。
 - 生产 profile 约束保持不变；修复仅更新旧 R10.1 测试的名称、True 断言，并删除已经默认为 True 的无效显式赋值。
 - 最终完整后端 Pytest 运行至 `100%` 且退出码为 `0`，仅有 1 个预期 skip；Ruff、组件边界、第三方报告、前端 `137` 条单测、生产构建和 `44` 条 E2E 均通过。
+
+## Circular progress refinement (2026-08-17)
+
+- The browser sample keeps the existing four-stage workflow and treats the first stage as `25%` for the empty task view.
+- The former quarter-highlight conic gradient was removed. The progress ring is now a single muted ring with centered `25%` text, so progress is not communicated by a bright-versus-dim segment contrast.
+- Desktop and mobile positioning both use `top: 50%` with `translateY(-50%)`; Chrome checks at `1440x900` and `390x844` found zero button overlap and a center offset below `0.01px`.
+- The artificial-review boundary card is rectangular; only workflow stages retain the chamfer because it communicates sequence.
+- The ring now uses the prior sample's three concentric, low-opacity expansion rings as a static gravity-wave effect. Mobile uses reduced radii so the wave stays inside the task panel.
+- Final scanline treatment is one `1px` line every `6px`: `.28` on the base canvas and `.22` on the main content background so it reads clearly through the work area without entering cards or the sidebar.
+- The global `design-dead-space-ui` Skill now records these final scanline values and the confirmed chamfer/progress-ring rules. Its UTF-8 validation returned `Skill is valid!`.
+- The final balance reduces scanline opacity to `.16` on the base canvas and `.10` in the work area. A horizontal work-area material gradient now uses pale sides (`.12`) and a darker center (`.28`), so depth does not depend on overly crisp scanlines.
+- The `.10` work-area scanline belongs on the full `.main` background, not the constrained content container, so it covers the workspace edge to edge. The inverse dark-side/light-center experiment was rejected; the global Skill retains pale sides and a dark center.
+- The Skill now owns `assets/dataset-audit-terminal-reference-1440x900.png`, a verified current-page desktop reference. Future uses must inspect it after reading the target product, using it only for visual hierarchy and material decisions, never as a source of invented task data or business text.
+
+## Confirmed Global Frontend Aesthetic Skill (2026-08-17)
+
+- 全局 Skill 安装目录已由用户确认：`C:\Users\lse\.codex\skills\design-lone-trail-frontend`，显示名为“孤星风格前端设计”。
+- 视觉合同：纸白是主色，`#FFFDAB` 仅用于选中、进度、计数和小几何点缀；黑色仅用于文字、标尺、状态与薄的右下硬阴影。前景面板不使用厚黑四边框。
+- 侧栏为纸白标尺而非黑色色块，包含细外线、竖向基线、刻度、章节编号和浅黄色 active state；采用不对称网格、细结构线与少量方/圆/短斜线。
+- 已通过无 Skill / 有 Skill 的 Terra xhigh 对照与 `quick_validate.py`。无 Skill 输出的黑底荧光方案被视为必须规避的反例；本项尚未开始前端源码实现。
+- 用户反馈当前概念可能杂乱时，Skill 的结论是压缩品牌区，而非添加图形：按任务状态 -> 核心数据 -> 操作 -> 品牌排序；导航分组为 mission/analysis/system；黑色只表达锁定、高风险、错误或确认状态，不能是无意义的大容器。
+- 一切信号、计数、图表和编号必须有标签、单位和既有数据来源；缺少产品字段时不得为了视觉效果伪造记录数、速度、ETA、告警或状态。Skill 复测已按真实 `App.tsx`/页面结构提出进度、审计和导出页的有序布局建议。
 - 本轮 9 个 `.test-tmp` 目录已精确清理，`4174`/`7865` 无监听；提交与推送结果以 Git 历史记录核验，不在提交前预填哈希。
+- 对齐补充合同：侧栏默认不显示刻度；只有用户明确要求并批准固定间距时才可加入刻度。不得有第二根平行竖线；每项菜单均有下方短横线，横线在基线前留空隙；侧栏品牌分隔线与页首分隔线必须以渲染测量证明同一 Y 坐标。`CURRENT TASK` 等摘要固定标签在上、值在下，间距 `4-8px`。
+- 宇航服配色候选仅为视觉探索：`EVA / 01` 是当前纸白基调；Oxygen Blue、Rescue Red、Deep Space Black 不进入全局 Skill，也不构成产品实现需求。用户尚未选择最终产品配色。
+- 用户要求深空生存恐怖方向必须服务于本项目的数据集审计工作流，而不是独立游戏 HUD。项目预览只能复用现有“任务、进度、风险、画风、重复、美学、导出、模型、系统”信息架构，以及新建任务、任务选择和人工复核边界；未经确认不得修改 React 源码。
+- 2026-08-17 深空审计工作台探索：用户明确要求本轮不使用边缘强调线、标尺、细线和纯色低密度排布，也不套用“孤星风格前端设计”Skill 的既有黄白/侧栏约束。视觉重心改由有业务含义的分段模块、层级材质、状态色块、宽字标和流程节奏承担；仍禁止无关装饰与伪造任务数据。
+- 深空工作台第一版配色被用户否定为混乱、缺乏死亡空间气质。当前草图改为暖灰铁材、低饱和琥珀投影、少量青色设备信号的三层色彩关系；风险红只能由真实风险状态触发，空任务页禁止出现。
+- 用户继续否定暖灰铁材版“太土”。当前深空草图采用深石墨金属、低亮度蓝青投影，旧金色限于单个工作流阶段；背景扫描线仅可低对比地放在主工作区，不能成为组件内的噪声或主要装饰。
+- 用户提供的第一版截图是当前正确基准：冷青黑色、单一屏幕色阶、扫描背景与任务控制区格网有一致介质感。暖红仅用于人工复核边界；不得再次引入大面积棕色、金色、青色状态块或多套竞争配色。
+- 已创建全局 Skill `design-dead-space-ui`（显示名“死亡空间风格UI设计”），路径为 `C:\Users\lse\.codex\skills\design-dead-space-ui`。触发场景是冷青黑终端、克制扫描线和功能化世界内界面；任何项目实现前仍须读取真实 UI/API，不得伪造指标或使用游戏资产。
+- 死亡空间风格 Skill 的补充合同：整体是苍白、褪色的冷青灰屏幕而不是深绿或荧光青；任务控制区、流程阶段、人工复核模块使用右上 `18px` 切角矩形，输入、小按钮、列表行和拥挤移动布局保持普通直角。
+- `pale-chamfer-cyan-console.html` 是当前死亡空间风格 Skill 的浏览器样例，服务于 `http://localhost:50989/`；它只展示现有任务页的真实导航、任务选择、新建任务和人工复核边界。
+- 该样例外层侧栏与任务控制区保持直角；当前选中的菜单项、流程阶段和人工复核卡使用右下缺角。任务控制区的圆形投影为桌面 `104px`、移动端 `72px`，仅作局部状态投影。
+- 每个保留的缺角都由模块自身的 `1px` 外框线沿轮廓闭合包裹；斜边段必须贴在右下切口边界并连接底边、右边，不得穿过面板内容。
+- 右下切口的斜边必须与缺口边界同向，从底边连接到右边；不得使用反向斜线。
+- 任务控制框最小高度为桌面 `205px`、移动端 `250px`；背景横向扫描线保持每 `6px` 一条 `1px`，透明度为 `0.18`。
+
+## 已确认：孤星风格前端重构（2026-08-17）
+
+- 用户确认当前产品前端采用全局 `design-lone-trail-frontend` Skill 的纸白、局部 `#FFFDAB`、单基线标尺侧栏和克制右下硬阴影视觉合同。
+- 本次范围仅限视觉层。`App.tsx` 的页面 ID/顺序、路由别名、任务选择器、页面布局、字段、接口、表格、虚拟列表和现有响应式断点均必须保持不变。
+- 不使用默认侧栏刻度、黑色侧栏、厚黑四边框、HUD/霓虹效果、游戏资产或伪造的业务计数、速度、ETA、告警与任务状态。
+- 验收需要源码契约、前端生产构建，以及桌面与 `390px` 窄视口的渲染复核。
+- 已实施于隔离分支 `codex/lone-trail-frontend-20260817`：`styles.css` 只增加共享视觉覆盖层，未改动 `App.tsx`、页面、接口或数据模型；新增源码视觉契约。
+- 红绿验证确认契约先因缺少 `--lone-paper` 失败，再在实现后通过。前端单测 `138 passed`、生产构建通过、完整 Playwright E2E `44 passed`。
+- Browser 插件不可用时按授权安装项目 Playwright Chromium。任务页在 `1440x900` 和 `390x844` 中均通过标题、刷新、无控制台 warning/error 和无横向溢出检查；画风审计页的选择与批准排除交互也通过。
+- 截图人工复核确认纸白单基线侧栏、品牌/页首同 Y 分隔线、浅黄当前项、局部主操作信号、移动端图标折叠和正常的表格/卡片折叠；本轮临时 QA 脚本与截图已清理。
+- 该样例的侧栏外轮廓也使用与任务控制区一致的右上 `18px` 缺角；菜单项、按钮和内容区不使用切角。
+- 用户确认“苍白”要求覆盖背景而非只覆盖文字，当前全局底色/侧栏/工作区为 `#1A2828/#203131/#304747`；禁止退回近黑主画布。
+
+## Lone Trail 工作台实施验证（2026-08-17）
+
+- 已将孤星风格重构合并到 `main`：纸白工作区、`#FFFDAB` 局部信号、192px 标尺侧栏、任务/审计/输出/系统分组和右侧上下文栏。
+- 导航序号通过 `data-sequence` + `::before` 渲染，DOM 文本仍保持既有页面标签；上下文栏在 DOM 中先于主内容但通过 CSS grid 保持桌面右侧、移动端主内容优先。
+- 验证证据：前端单测 `138 passed`，生产构建通过，Playwright `44 passed`，`git diff --check` 通过；`4174` 无监听。
+- Browser 插件不可用，使用项目 Playwright Chromium；已检查参考图对齐关系、1440 级桌面截图和 390px 移动截图，无控制台错误或横向溢出。
+- 后续视觉修正将桌面侧栏的唯一基线延伸进品牌区（距顶 `18px`），并将品牌横线的终点与菜单短横线对齐，保持其与基线的明确空隙；移动图标栏继续隐藏该基线，避免第二根平行竖线。回归契约按红绿验证，最终前端单测 `139 passed`、构建通过、Playwright `44 passed`，并在本机运行中的 `7865` 页面截图确认。
+- 任务页“新建任务”的真实容器是 `.toolbar-band`，主操作阴影必须绑定该选择器而非未使用的 `.task-command-bar`；当前导航项也使用相同的右下黑色硬阴影。桌面内容最大宽度使用自动左右外边距，页首和摘要通过匹配的动态内距与内容边界对齐；`390px` 保持原有紧凑间距和无水平溢出。
+- 选中导航项的下方必须预留与硬阴影偏移量相同的空间，并隐藏该项自身底部短横线，防止投影压住下一菜单项。侧栏保留唯一黑色内部标尺；当需要壳层分隔时，可在外侧使用一条浅色中性边界，不能再添加第二条黑色标尺。美学审计在保持分析组/路由不变的前提下取消 `nav-subitem` 缩进，作为该组内的左对齐入口。孤星 Skill 已同步这些规则，并通过本地前置结构与文本契约检查；官方 `quick_validate.py` 因运行时缺少 `PyYAML` 未执行，未安装依赖。
+
+## 孤星工作台最新确认（2026-08-17）
+
+- 用户要求任务上下文位于最左侧。桌面网格固定为上下文窄列在左、主内容弹性列在右；上下文的分隔线与内边距均朝向主内容。移动端不改变阅读优先级，仍先显示主内容。
+- 用户要求大标题使用参考图中的淡投影。仅 `.page-title h1` 使用 `5px 8px 0 rgb(23 23 23 / 12%)` 的单层硬投影；不扩散到标签、菜单或按钮。
+- 全局 `design-lone-trail-frontend` Skill 已同步上述两条规则，并通过项目 `.venv` 中的 `quick_validate.py` 校验。
+- 用户最终否定侧边子菜单文字投影。当前 `.nav-item.nav-subitem` 不使用 `text-shadow`；仅保留页面大标题投影和当前菜单项的黑色右下硬阴影。
+- 侧栏审计子菜单对齐：最终覆盖层将 `.nav-item.nav-subitem` 的左内边距固定为 `9px`，与普通菜单共用序号、图标和文字列；`loneTrailPresentation.test.mjs` 锁定最后一条覆盖规则。生产页面 `#risks` 在 `1440x900` 下量测五项菜单的 X 坐标均为序号/图标/文字 `21/49/77`，无控制台 warning/error 或横向溢出。孤星 Skill 已同步“以分组和紧凑行高表达层级，不得额外缩进”的规则。
+- 最新确认覆盖此前“任务上下文在左侧”的方向：进度、风险、画风等页面的 `.workbench-context` 在桌面网格固定为最右受限列，主内容在左且分隔线朝左；`390px` 继续主内容在前、上下文在后。`#progress` 量测桌面主内容/上下文为 `x=248–1110` 与 `x=1134–1384`，移动端分别为 `top=303` 与 `top=443`，均无横向溢出或控制台 warning/error。孤星 Skill 已同步为右侧上下文规则。
+- 用户进一步确认“最右侧”是工作区右内边距，不是仅位于受限内容网格的右列。超过 `1732px` 时，仅 `.workbench-grid` 向右延伸，保留主内容既有起始对齐；`#exports` 在 `1920x1080` 下主内容为 `x=342–1505`、上下文为 `x=1529–1864`，右边距 `56px`。窄屏规则不变；孤星 Skill 已同步，且无控制台 warning/error 或水平溢出。
+- `start_webui.bat` 的实际入口 `launch_webui.ps1` 现先用项目内 `.runtime\\node\\npm.cmd` 执行 `--prefix frontend run build`，再检查或启动 `7865` 服务。因此前端修改会生成新哈希静态资源，现有服务也能在本次启动操作后提供新包；本机实际运行已产出 `index-aXhUIGp5.js` 和 `index-D61IFBO3.css`。全局 `design-lone-trail-frontend` Skill 的 Finish Check 已同步要求通过正常启动入口重建并确认服务的哈希入口。

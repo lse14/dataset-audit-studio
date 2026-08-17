@@ -3748,12 +3748,12 @@ textarea:focus-visible {
 }
 
 .nav-item.active::after {
-  background: var(--lone-ink);
+  display: none;
 }
 
 .nav-item.nav-subitem {
   min-height: 38px;
-  padding-left: 22px;
+  padding-left: 9px;
 }
 
 .sidebar-status {
@@ -4126,9 +4126,10 @@ textarea:hover {
 }
 
 .sidebar::before {
-  top: var(--workbench-header);
+  top: 18px;
   right: 17px;
   bottom: 12px;
+  z-index: 2;
   background: var(--lone-ink);
 }
 
@@ -4139,6 +4140,7 @@ textarea:hover {
 }
 
 .brand-mark {
+  margin-right: 42px;
   background: var(--lone-paper);
 }
 
@@ -4171,12 +4173,15 @@ textarea:hover {
 }
 
 .nav-item {
+  width: calc(100% - 17px);
   border-radius: 0;
   border-bottom: 1px solid var(--lone-rule);
 }
 
 .nav-item.active {
   background: var(--lone-signal);
+  box-shadow: var(--lone-shadow);
+  margin-bottom: 5px;
 }
 
 .nav-divider {
@@ -4190,13 +4195,18 @@ textarea:hover {
 
 .topbar {
   background: var(--lone-paper);
+  padding-inline: max(56px, calc((100vw - var(--workbench-sidebar) - 1540px) / 2 + 56px));
+}
+
+.page-title h1 {
+  text-shadow: 5px 8px 0 rgb(23 23 23 / 12%);
 }
 
 .workspace-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
-  padding: 14px 32px;
+  padding: 14px max(56px, calc((100vw - var(--workbench-sidebar) - 1540px) / 2 + 56px));
   background: var(--lone-paper);
   border-bottom: 1px solid var(--lone-rule);
 }
@@ -4229,15 +4239,23 @@ textarea:hover {
 
 .content {
   width: min(1540px, 100%);
-  padding: 28px 32px 58px;
+  margin-inline: auto;
+  padding: 28px 56px 58px;
 }
 
 .workbench-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 224px;
+  grid-template-columns: minmax(0, 1fr) minmax(248px, 22%);
   grid-template-areas: "primary context";
   align-items: start;
-  gap: 30px;
+  gap: 24px;
+}
+
+@media (min-width: 1733px) {
+  /* Extend only the work grid so its right rail reaches the workspace inset. */
+  .workbench-grid {
+    width: calc(100% + 50vw - 866px);
+  }
 }
 
 .workbench-primary,
@@ -4298,6 +4316,11 @@ textarea:hover {
   margin-top: 18px;
 }
 
+.workbench-context .task-selector select {
+  width: 100%;
+  min-width: 0;
+}
+
 .panel,
 .toolbar-band,
 .review-toolbar,
@@ -4317,6 +4340,14 @@ textarea:hover {
 .task-command-bar,
 .page-stack > .panel:first-child,
 .workbench-context {
+  box-shadow: var(--lone-shadow);
+}
+
+.task-command-bar .button.primary {
+  box-shadow: var(--lone-shadow);
+}
+
+.toolbar-band .button.primary {
   box-shadow: var(--lone-shadow);
 }
 
@@ -4382,6 +4413,7 @@ textarea:focus-visible {
     padding: 20px 0 0;
     border-top: 1px solid var(--lone-ink);
     border-left: 0;
+    border-right: 0;
     box-shadow: none;
   }
 
@@ -4421,6 +4453,8 @@ textarea:focus-visible {
 
   .brand-mark,
   .nav-item {
+    margin-right: 0;
+    width: 100%;
     justify-content: center;
     padding-inline: 0;
   }
@@ -4464,6 +4498,10 @@ textarea:focus-visible {
   .content {
     padding: 18px 12px 40px;
   }
+
+  .nav-item.active {
+    margin-bottom: 3px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4477,9 +4515,9 @@ textarea:focus-visible {
   }
 }
 
-/* Keep the late ruler treatment single and explicit. */
+/* Keep one ink ruler and a quiet shell boundary. */
 .sidebar {
-  border-right: 0;
+  border-right: 1px solid var(--lone-rule);
 }
 
 .nav-item {

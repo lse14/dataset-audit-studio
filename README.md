@@ -85,6 +85,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\start.ps1
 ```
 
+`start_webui.bat` 会在打开或复用本地 WebUI 前重新构建前端；仅直接运行 `scripts\start.ps1` 时不会触发该构建步骤。
+
 默认地址为 <http://127.0.0.1:7865>。使用其他端口：
 
 ```powershell

@@ -1,5 +1,49 @@
 # Roadmap
 
+## 启动入口前端构建（2026-08-17）
+
+- [x] 让 `start_webui.bat` 在复用现有服务或启动新服务之前，使用项目内 Node 重新构建前端静态资源。
+- [x] 构建失败时阻止打开旧页面，且不安装依赖、不使用系统 Node 或修改任务数据。
+
+### 验收与验证
+
+- `launch_webui.ps1` 在首次 `Get-WebUIState` 前调用 `.runtime\\node\\npm.cmd --prefix frontend run build`。
+- 回归测试先因缺少构建调用失败，修复后通过；实际运行 `start_webui.bat` 输出 Vite 生产构建成功。
+- 运行中 `http://127.0.0.1:7865/` 返回新的带哈希入口资源：`index-aXhUIGp5.js` 与 `index-D61IFBO3.css`。
+
+## Lone Trail 上下文最右侧锚定（2026-08-17）
+
+- [x] 解除超宽桌面中工作台网格受主内容最大宽度限制，使当前任务上下文抵达工作区最右内边距。
+- [x] 保持主内容原有左侧对齐和移动端主内容优先，不改变页面数据、路由或控件。
+
+### 验收与验证
+
+- 当视口宽度超过 `1732px` 时，工作台网格仅向右扩展；右栏不再停在 `1540px` 内容上限。
+- 新契约先因缺少宽屏网格宽度规则失败，修复后通过；完整前端单测 `139/139` 和生产构建通过。
+- `#exports` 在 `1920x1080` 下量测主内容为 `x=342–1505`、上下文为 `x=1529–1864`，右边距为 `56px`；`390x844` 下仍为主内容 `top=303`、上下文 `top=443`。两个视口无横向溢出及控制台 warning/error。
+
+## Lone Trail 任务上下文右侧布局（2026-08-17）
+
+- [x] 将进度、风险、画风等页面的当前任务上下文栏固定为桌面最右列。
+- [x] 保持窄屏主内容优先，且不改动路由、任务选择器、接口或页面数据。
+
+### 验收与验证
+
+- 桌面网格为弹性主内容左列加受限上下文右列，上下文分隔线面向左侧主内容。
+- 新布局契约先因旧的 `"context primary"` 顺序失败，修复后通过；完整前端单测 `139/139` 和生产构建通过。
+- `#progress` 在 `1440x900` 下量测主内容为 `x=248–1110`、上下文为 `x=1134–1384`；在 `390x844` 下主内容位于 `top=303`、上下文位于 `top=443`。两个视口均无横向溢出及控制台 warning/error。
+
+## Lone Trail 侧栏审计子菜单对齐（2026-08-17）
+
+- [x] 将审计组子菜单恢复到与普通菜单一致的序号、图标和文字起始列。
+- [x] 用源码契约锁定最终覆盖规则，避免后续覆盖层重新引入额外左缩进。
+
+### 验收与验证
+
+- 最终 `.nav-item.nav-subitem` 的 `padding-left` 为 `9px`，保留紧凑行高而不改变路由、任务逻辑或信息架构。
+- 新契约先因旧值 `22px` 失败，修复后通过；完整前端单测 `139/139` 和生产构建通过。
+- 在 `http://127.0.0.1:7865/#risks` 的 `1440x900` 量测中，任务、风险、画风、重复、美学的序号/图标/文字 X 坐标均为 `21/49/77`，无横向溢出及控制台 warning/error。
+
 ## Goal
 
 Restore the local WebUI startup after removing obsolete local runtime data and rebuilding the missing frontend bundle.
@@ -669,3 +713,143 @@ Restore the local WebUI startup after removing obsolete local runtime data and r
 - 最终完整后端 Pytest 运行至 `100%`，退出码 `0`，仅有 1 个预期 skip；R10.1 与 profile 合同聚焦回归为 `12 passed`。
 - Ruff、组件导入边界和第三方依赖报告均通过；前端单测 `137 passed`，生产 TypeScript/Vite 构建通过，Playwright E2E `44 passed`。
 - 本轮 9 个 `.test-tmp` 临时目录已精确删除；`4174` 与 `7865` 均无监听，未遗留测试或 WebUI 服务。
+
+## 全局前端审美 Skill（2026-08-17）
+
+- [x] 根据已确认的纸白、`#FFFDAB`、标尺侧栏与向右下硬阴影方向，创建全局 `design-lone-trail-frontend` Skill（显示名：孤星风格前端设计）；本项未修改产品前端。
+- [x] 无 Skill 的 Terra xhigh 对照错误使用深黑画布、荧光青与安全橙，且未提供标尺侧栏；这些偏差已写入明确的防错约束。
+- [x] 使用 Skill 的 Terra xhigh 复测输出纸白主色、局部 `#FFFDAB`、纸质标尺侧栏、桌面 `4-7px` / 移动端 `2-5px` 右下硬阴影，并避开 HUD、黑色侧栏和厚黑框。
+- [x] `quick_validate.py` 返回 `Skill is valid!`；安装位置为 `C:\Users\lse\.codex\skills\design-lone-trail-frontend`。
+- [x] 根据“视觉语言已成形、信息系统未成形”的评价补充操作秩序：首屏按任务状态、核心数据、操作、品牌排序；导航按 mission/analysis/system 分组；装饰必须有真实数据语义，且不得虚构计数、速度、ETA、告警或任务状态。
+- [x] Terra xhigh 使用更新后的 Skill 对现有页面复测，产出与 `App.tsx` 的任务/审计/导出结构一致；进度、审计和导出页均得到紧凑且单一主操作的布局建议。
+- [x] 将最终的对齐合同写入全局 Skill：默认无刻度、单一侧栏基线、每个菜单项下方留空隙的短横线、页首与侧栏分隔线同一 Y 坐标、摘要标签/值上下分行；`quick_validate.py` 与独立 Terra xhigh 前向测试均通过。
+- [x] 仅以视觉草图探索 Oxygen Blue、Rescue Red 与 Deep Space Black；用户明确这些不是产品实现需求，也不得写入全局 Skill。产品前端仍未改动。
+
+## 深空终端项目重绘探索（2026-08-17）
+
+- [-] 基于现有 `App.tsx` 的真实导航与任务/审计/导出工作流制作项目专用视觉预览；不改动前端源码、接口、数据或交互契约。
+- [x] 阅读 Dino Ignacio 的 Dead Space UI 访谈，确认可迁移原则是“功能层优先、装饰必须绑定实际操作、定位信息清晰而不侵入”；项目预览据此将任务到导出的既有流程改为可定位工作流轨道，而非背景特效或虚构仪表。来源：`http://www.inventinginteractive.com/2013/07/10/interview-dino-ignacio-dead-space/`。
+- [x] 新建浏览器草图 `layered-audit-station.html`；它不使用边缘强调线、标尺、细线或低密度纯色面板，视觉重量由任务阶段、工作进程与人工复核的厚实分段模块、状态色块和层级投影承担。
+- [x] 用户指出第一版深空配色混杂，新增 `warm-holographic-audit-station.html`：主体统一为暖灰铁材与低饱和琥珀投影；青色只表达真实设备/服务信号，空任务页不出现风险红。
+- [x] 用户否定暖灰版本的褐色倾向，新增 `scanline-audit-console.html`：深石墨金属为底、低亮度蓝青承担信息投影，旧金色仅保留于导出阶段；工作区底层使用低对比扫描线，不扩散到组件内容。
+- [x] 用户提供第一版截图并确认其气质与颜色更好；新增 `first-pass-cyan-console-restored.html` 复原冷青黑色单一色阶、扫描背景、任务控制区格网和仅用于人工复核边界的暖红卡片。
+- [x] 创建并全局安装 `C:\Users\lse\.codex\skills\design-dead-space-ui`（显示名：死亡空间风格UI设计）。Skill 固化冷青单色阶、扫描线范围、真实数据映射、人工复核暖红与非侵权边界；结构验证通过，独立 Terra xhigh 前向测试未生成虚构指标或多色 HUD。
+- [x] 用户补充 Skill 缺少苍白色调与缺角面板语法；现已改为苍白冷青灰 `#0B1010/#101919/#183030/#DCE9E3/#A6D8D1`，并规定任务控制、流程和复核模块使用右上 `18px` 切角。全新 Terra xhigh 前向测试同时命中两项，且未将切角扩散到小控件。
+- [x] 同步新 Skill 的浏览器样例 `pale-chamfer-cyan-console.html`，并恢复原 `http://localhost:50989/` 视觉伴侣服务；该样例沿用真实任务页导航与操作文案，使用苍白青灰和右上切角，不新增数据或控件。
+- [x] 用户指出样例背景仍偏深，已将 Skill 与样例底色/侧栏/工作区同步提亮为 `#1A2828/#203131/#304747` 的苍白青灰；服务 HTTP 200，Skill 结构验证通过。
+- [x] 最终确定缺角位置与范围：外层 `.sidebar`、任务控制区均为直角；只有当前 `.nav-item.active`、四个流程阶段和人工复核卡使用右下缺角。圆形投影缩至桌面 `104px`、移动端 `72px`。`http://localhost:50989/` 在 `1440x900` 与 `390x844` 均返回 HTTP 200、无横向溢出。
+- [x] 所有剩余缺角使用模块自身的 `1px` 外框线闭合包裹；斜边段贴在右下切口边界并与底边、右边相接，不穿过面板内容。桌面与移动端均验证直角任务控制区、右下切角和外框样式。
+- [x] 任务控制框最小高度压缩至桌面 `205px`、移动端 `250px`（移动端内容自然高度为 `257px`）；主背景 `6px` 扫描线透明度由 `0.09` 提至最终的 `0.18`。两个视口均确认内容和圆形投影未裁切、无横向溢出。
+- [x] 修正右下切口斜边的方向，使其沿缺口从底边连接到右边；此前反向的斜线已移除。桌面渲染确认外框连续且无内容遮挡。
+- [?] 用户明确本轮不沿用“孤星风格前端设计”Skill 的既有视觉合同；待确认此分层深空方向后，才创建最小前端实现计划。
+- [ ] 用户确认项目专用预览的密度、配色与信息优先级后，再以最小 CSS/壳层改动实现并进行前端构建与交互回归。
+
+## Circular progress refinement (2026-08-17)
+
+- [x] Replaced the quarter-highlight conic ring with one uniform, low-contrast circular progress ring.
+- [x] Added the current workflow percentage (`25%`) as centered text inside the ring; no fabricated metric or extra control was added.
+- [x] Kept the ring vertically centered in the task-control panel at desktop and mobile widths.
+
+### Verification
+
+- Local preview `http://localhost:50989/` returned HTTP `200`.
+- Chrome/Playwright checks at `1440x900` and `390x844` reported a centered ring, `25%` label, and no overlap with `.console-actions`.
+
+## Workflow chamfer and gravity-wave refinement (2026-08-17)
+
+- [x] Removed the chamfer from the artificial-review boundary card; it remains a complete rectangular panel.
+- [x] Kept chamfers on workflow stages as the ordering cue.
+- [x] Restored the original low-contrast concentric gravity-wave rings around the centered `25%` progress ring, with smaller radii on mobile to avoid clipping.
+
+### Verification
+
+- Chrome/Playwright at `1440x900` and `390x844` reported `reviewClip: none`, a centered ring, and the expected multi-layer `box-shadow` wave rings.
+
+## Scanline visibility and Skill sync (2026-08-17)
+
+- [x] Increased the base scanline to `.28` opacity and added a `.22` scanline layer to the main content background, keeping one `1px` line every `6px`.
+- [x] Updated the global `design-dead-space-ui` Skill with the confirmed scanline, workflow-chamfer, rectangular review-card, centered percentage ring, and static gravity-wave rules.
+
+### Verification
+
+- Skill validator returned `Skill is valid!` with UTF-8 mode enabled.
+- Chrome/Playwright at `1440x900` and `390x844` confirmed the scanline layers, centered `25%` ring, rectangular review card, and no horizontal overflow.
+- Preview returned HTTP `200`.
+
+## Scanline and depth-balance refinement (2026-08-17)
+
+- [x] Reduced scanline strength to base `.16` and work-area `.10` so the texture no longer dominates the composition.
+- [x] Added a restrained horizontal material gradient: pale cyan-grey edges at `.12`, a cold-dark center at `.28`.
+- [x] Updated the global `design-dead-space-ui` Skill to make depth come from the side-light/center-dark relationship rather than dense scanlines.
+
+### Verification
+
+- Chrome/Playwright at `1440x900` and `390x844` found the expected gradient and scanline layers, clear heading color, and no horizontal overflow.
+- Root preview `http://localhost:50989/` returned HTTP `200` from the restored local preview service.
+- Skill validator returned `Skill is valid!`.
+
+## 孤星风格前端重构（2026-08-17）
+
+- [x] 仅重构前端视觉层：保留现有路由、导航顺序、字段、接口、控件位置、表格/虚拟列表数据密度与响应式布局。
+- [x] 用户确认使用全局 `design-lone-trail-frontend` Skill，并确认仅替换视觉语言，不进行页面或功能重构。
+- [x] 以纸白、局部 `#FFFDAB`、黑色结构线和克制右下硬阴影重设应用外壳、导航、页头、共享面板与控件。
+- [x] 使用源码契约、生产构建及桌面/移动端浏览器复核，确认无横向溢出、控件遮挡或布局漂移。
+
+### 验收标准
+
+- 现有 `App.tsx` 页面 ID、页面顺序、任务选择器、路由别名、表单字段与数据请求不变。
+- 侧栏为纸白单基线导航，默认无刻度；当前项为浅黄色，品牌分隔线与页首分隔线处于同一 Y 坐标。
+- 纸白为主色，`#FFFDAB` 仅表达选中、主操作、进度或计数；不出现黑色侧栏、厚黑四边框、霓虹/HUD 效果或虚构业务数据。
+- 桌面及窄移动端保持现有断点下的数据可读性、焦点可见性和无水平溢出。
+
+### 验证结果
+
+- 先新增 `loneTrailPresentation.test.mjs` 并观察到缺少 `--lone-paper` 的预期失败；完成 CSS 主题层后该契约通过。
+- 隔离工作树前端单测 `138 passed`，`npm run build` 通过；前端完整 Playwright E2E `44 passed`。
+- Browser 插件在当前会话不可用，使用经用户授权安装的项目 Playwright Chromium 复核。`1440x900` 与 `390x844` 的任务页均加载 `Dataset Audit Studio`、可触发刷新、没有浏览器 warning/error 且无水平溢出。
+- 同一 Playwright 复核的画风审计页完成选择和批准排除交互；桌面截图确认侧栏品牌分隔线与页首线对齐、单基线和浅黄当前项，移动截图确认图标导航与表格卡片未被裁切。
+- 临时 QA 脚本与测试截图已删除；`4174` 与 `4175` 仅剩 `TIME_WAIT`，无本地监听服务。
+
+## Full-width scanline and reversed-depth experiment (2026-08-17)
+
+- [x] Moved the scanline layer from the constrained content container to the full main-workspace background so it reaches both edges.
+- [x] User rejected dark sides and a pale center. The confirmed material gradient restores pale sides (`.12`) and a cold-dark center (`.28`), and is now written into the global Skill.
+
+### Verification
+
+- Chrome/Playwright at `1440x900` and `390x844` confirmed the full-width main background layer, the restored pale-side/dark-center gradient, and no horizontal overflow.
+- Skill validator returned `Skill is valid!`.
+
+## Skill visual reference asset (2026-08-17)
+
+- [x] Saved the current `1440x900` root-preview screenshot as `C:\Users\lse\.codex\skills\design-dead-space-ui\assets\dataset-audit-terminal-reference-1440x900.png`.
+- [x] Added a mandatory visual-reference step to `design-dead-space-ui/SKILL.md`, while explicitly forbidding the use of screenshot text or empty-state values as fabricated product data.
+
+### Verification
+
+- The asset exists, is `349,062` bytes, and was visually opened after capture.
+- `quick_validate.py` returned `Skill is valid!` with project-local Python in UTF-8 mode.
+
+## 孤星风格前端工作台实施（2026-08-17）
+
+- [x] 合并隔离分支 `codex/lone-trail-workbench-20260817` 的工作台壳层、样式层与视觉契约测试；保留现有路由、接口、页面数据和响应式行为。
+- [x] 修正导航序号为 CSS 视觉伪元素，避免改变按钮文本语义；上下文栏先出现在 DOM，再由 grid areas 保持桌面右栏、移动端内容优先，兼容任务选择器和旧 E2E 定位。
+- [x] 前端单测 `138/138`、生产构建、`git diff --check` 通过。
+- [x] Playwright 全量 E2E `44/44` 通过（单 worker，避免本地 Vite 端口并发竞争）；覆盖桌面/390px 移动视口、任务选择、审计批准、导出切换和旧路由。
+- [x] 浏览器插件不可用，使用项目 Playwright Chromium 完成渲染复核；验证纸白单基线侧栏、浅黄当前项、上下文栏和移动端无水平溢出。
+- [x] 验证结束后无 `4174` 监听服务；未新增依赖、后端接口或产品数据。
+- [x] 修正桌面侧栏基线：竖线从品牌区 `18px` 起连续显示，品牌横线与菜单短横线使用同一右侧留白，避免与基线黏连。静态视觉契约已先失败再通过；前端单测 `139/139`、生产构建与 Playwright `44/44` 均通过，已在运行中的 `http://127.0.0.1:7865/#tasks` 和 `390px` 窄视口截图复核。
+- [x] 修正工作台视觉锚点与平衡：任务页的实际 `.toolbar-band` 主操作和当前菜单项均使用黑色右下硬阴影；桌面内容在工作区内居中，`1440px` 保持两侧 `56px` 内距，`1920px` 的最大内容宽度左右外边距均为 `94px`。红绿视觉契约、前端单测 `139/139`、构建、Playwright `44/44` 和桌面/`390px` 截图复核均通过。
+- [x] 修正侧栏投影与边界：当前菜单项为硬阴影预留与投影等宽的下方空间，并移除重叠的激活底部短横线；在唯一黑色标尺外恢复浅色壳层分隔线。美学审计保留在审计组和原有路由中，但取消缩进并左对齐。全量前端单测 `139/139`、构建、Playwright `44/44`、桌面和 `390px` 截图复核通过。
+
+## 孤星工作台布局微调（2026-08-17）
+
+- [x] 桌面端将当前任务上下文栏置于工作区最左列，使用右侧内向分隔线；窄屏仍保持主内容在前、上下文在后。
+- [x] 页面大标题增加单层低对比右下投影，不影响紧凑标签或操作控件。
+- [x] 已将左侧任务栏和标题投影的可复用规则同步至全局 `design-lone-trail-frontend` Skill。
+- [x] 按用户复核结果移除所有侧边子菜单文字投影；保留页面大标题投影与当前菜单项的黑色选中硬阴影，并同步更新 Skill。
+
+### 验证结果
+
+- 源码视觉契约先失败后通过；前端单测 `139/139`、生产构建、Playwright `44/44` 和 `git diff --check` 均通过。
+- `http://127.0.0.1:7865/#tasks` 的 `1440x900` 与 `390x844` 截图确认：桌面任务栏位于主内容左侧，窄屏无横向溢出且主内容保持优先。
