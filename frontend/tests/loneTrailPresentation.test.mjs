@@ -4,16 +4,35 @@ import test from 'node:test'
 
 const source = (path) => readFile(new URL(`../src/${path}`, import.meta.url), 'utf8')
 
-test('Lone Trail keeps the existing audit shell while replacing its visual language', async () => {
+test('approved workbench composition is present in the shared shell', async () => {
   const [app, styles] = await Promise.all([source('App.tsx'), source('styles.css')])
 
-  assert.match(app, /const primaryPages[\s\S]*id: 'tasks'[\s\S]*id: 'progress'/)
-  assert.match(app, /const auditPages[\s\S]*id: 'risks'[\s\S]*id: 'style'[\s\S]*id: 'duplicates'[\s\S]*id: 'aesthetics'/)
-  assert.match(styles, /--lone-paper:\s*#fff;/)
-  assert.match(styles, /--lone-signal:\s*#FFFDAB;/)
-  assert.match(styles, /\.app-shell\s*{[\s\S]*grid-template-columns:\s*220px minmax\(0, 1fr\)/)
-  assert.match(styles, /\.sidebar::before\s*{[\s\S]*right:/)
-  assert.match(styles, /\.nav-item\.active\s*{[\s\S]*background:\s*var\(--lone-signal\)/)
-  assert.match(styles, /@media \(max-width: 860px\)\s*{[\s\S]*grid-template-columns:\s*64px minmax\(0, 1fr\)/)
-  assert.doesNotMatch(styles, /background:\s*#242a27/)
+  assert.match(app, /const navigationGroups[\s\S]*mission[\s\S]*analysis[\s\S]*output[\s\S]*system/i)
+  assert.match(app, /className=["']workspace-summary["']/)
+  assert.match(app, /className=["']workbench-grid["']/)
+  assert.match(app, /className=["']workbench-context["']/)
+  assert.match(app, /statusLabel\(selectedTask\.status\)/)
+
+  for (const routeId of [
+    'tasks',
+    'progress',
+    'risks',
+    'style',
+    'duplicates',
+    'aesthetics',
+    'exports',
+    'models',
+    'system',
+  ]) {
+    assert.match(app, new RegExp(`id:\s*['"]${routeId}['"]`))
+  }
+
+  assert.match(styles, /--workbench-sidebar:\s*192px/)
+  assert.match(styles, /--workbench-header:\s*98px/)
+  assert.match(styles, /\.app-shell\s*{[\s\S]*grid-template-columns:\s*var\(--workbench-sidebar\)/)
+  assert.match(styles, /\.brand-mark\s*{[\s\S]*border-bottom:\s*[^;]*#(?:000|0f0f0f|151a17)/i)
+  assert.match(styles, /\.topbar\s*{[\s\S]*border-bottom:\s*[^;]*#(?:000|0f0f0f|151a17)/i)
+  assert.match(styles, /\.workbench-grid\s*{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)\s+224px/)
+  assert.match(styles, /@media\s*\(max-width:\s*860px\)[\s\S]*grid-template-columns:\s*64px\s+minmax\(0, 1fr\)/)
+  assert.doesNotMatch(styles, /#242a27/i)
 })
