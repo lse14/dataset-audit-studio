@@ -4099,3 +4099,378 @@ textarea:hover {
     box-shadow: var(--lone-shadow);
   }
 }
+
+/* Lone Trail workbench composition */
+:root {
+  --lone-paper: #fff;
+  --lone-ground: #f5f4ee;
+  --lone-signal: #FFFDAB;
+  --lone-ink: #171717;
+  --lone-muted: #6b6b63;
+  --lone-rule: #d8d8cd;
+  --lone-soft-rule: #e8e8df;
+  --lone-shadow: 5px 5px 0 var(--lone-ink);
+  --workbench-sidebar: 192px;
+  --workbench-header: 98px;
+}
+
+.app-shell {
+  grid-template-columns: var(--workbench-sidebar) minmax(0, 1fr);
+}
+
+.sidebar {
+  width: var(--workbench-sidebar);
+  color: var(--lone-ink);
+  background: var(--lone-paper);
+  border-right: 1px solid var(--lone-ink);
+}
+
+.sidebar::before {
+  top: var(--workbench-header);
+  right: 17px;
+  bottom: 12px;
+  background: var(--lone-ink);
+}
+
+.brand-mark,
+.topbar {
+  min-height: var(--workbench-header);
+  border-bottom: 1px solid var(--lone-ink);
+}
+
+.brand-mark {
+  background: var(--lone-paper);
+}
+
+.sidebar nav {
+  gap: 0;
+}
+
+.nav-section {
+  gap: 0;
+}
+
+.nav-section-label {
+  color: var(--lone-muted);
+  border-bottom: 1px solid var(--lone-soft-rule);
+}
+
+.nav-sequence {
+  display: inline-flex;
+  flex: 0 0 18px;
+  align-items: center;
+  justify-content: center;
+  color: var(--lone-muted);
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.nav-item {
+  border-radius: 0;
+  border-bottom: 1px solid var(--lone-rule);
+}
+
+.nav-item.active {
+  background: var(--lone-signal);
+}
+
+.nav-divider {
+  background: var(--lone-ink);
+}
+
+.workspace-main {
+  min-width: 0;
+  background: var(--lone-ground);
+}
+
+.topbar {
+  background: var(--lone-paper);
+}
+
+.workspace-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 14px 32px;
+  background: var(--lone-paper);
+  border-bottom: 1px solid var(--lone-rule);
+}
+
+.workspace-summary > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 18px;
+}
+
+.workspace-summary > div + div {
+  border-left: 1px solid var(--lone-rule);
+}
+
+.workspace-summary span {
+  color: var(--lone-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.workspace-summary strong {
+  overflow: hidden;
+  color: var(--lone-ink);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content {
+  width: min(1540px, 100%);
+  padding: 28px 32px 58px;
+}
+
+.workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 224px;
+  align-items: start;
+  gap: 30px;
+}
+
+.workbench-primary,
+.page-stack {
+  min-width: 0;
+}
+
+.page-stack {
+  gap: 18px;
+}
+
+.workbench-context {
+  min-width: 0;
+  padding: 6px 0 0 22px;
+  border-left: 1px solid var(--lone-ink);
+}
+
+.context-eyebrow {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--lone-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.workbench-context h2 {
+  margin: 0 0 20px;
+  color: var(--lone-ink);
+  font-size: 18px;
+}
+
+.workbench-context dl {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.workbench-context dl > div {
+  display: grid;
+  gap: 3px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--lone-soft-rule);
+}
+
+.workbench-context dd {
+  color: var(--lone-ink);
+}
+
+.workbench-context .task-selector {
+  display: grid;
+  gap: 6px;
+  margin-top: 18px;
+}
+
+.panel,
+.toolbar-band,
+.review-toolbar,
+.selection-bar,
+.task-command-bar,
+.metric-strip,
+.review-counts,
+.summary-grid,
+.model-list,
+.inline-error,
+.loading-block,
+.empty-state {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.task-command-bar,
+.page-stack > .panel:first-child,
+.workbench-context {
+  box-shadow: var(--lone-shadow);
+}
+
+.button,
+.icon-button,
+input,
+select,
+textarea {
+  border-radius: 0;
+}
+
+.button,
+.icon-button {
+  border-color: var(--lone-ink);
+}
+
+.button.primary,
+.button.primary:hover:not(:disabled) {
+  color: var(--lone-ink);
+  background: var(--lone-signal);
+  border-color: var(--lone-ink);
+}
+
+.button.secondary,
+.icon-button {
+  color: var(--lone-ink);
+  background: var(--lone-paper);
+}
+
+.button.secondary:hover:not(:disabled),
+.icon-button:hover:not(:disabled) {
+  color: var(--lone-ink);
+  background: var(--lone-signal);
+  border-color: var(--lone-ink);
+}
+
+.button.danger,
+.button.danger:hover:not(:disabled) {
+  color: #fff;
+  background: #a93c34;
+  border-color: #7f2b25;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--lone-ink);
+  outline-offset: 3px;
+}
+
+@media (max-width: 1080px) {
+  .workbench-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .workbench-context {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    gap: 12px 24px;
+    padding: 20px 0 0;
+    border-top: 1px solid var(--lone-ink);
+    border-left: 0;
+    box-shadow: none;
+  }
+
+  .workbench-context .context-eyebrow,
+  .workbench-context h2 {
+    grid-column: 1;
+  }
+
+  .workbench-context dl,
+  .workbench-context .task-selector {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}
+
+@media (max-width: 860px) {
+  .app-shell {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .sidebar {
+    width: 64px;
+  }
+
+  .sidebar::before {
+    display: none;
+  }
+
+  .brand-mark span,
+  .nav-item > span:not(.nav-sequence),
+  .nav-section-label,
+  .sidebar-status span,
+  .version-label,
+  .nav-sequence {
+    display: none;
+  }
+
+  .brand-mark,
+  .nav-item {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .topbar {
+    min-height: var(--workbench-header);
+  }
+
+  .content {
+    padding-inline: 18px;
+  }
+}
+
+@media (max-width: 620px) {
+  :root {
+    --lone-shadow: 3px 3px 0 var(--lone-ink);
+  }
+
+  .workspace-summary {
+    grid-template-columns: 1fr;
+    padding: 10px 14px;
+  }
+
+  .workspace-summary > div {
+    padding: 8px 0;
+  }
+
+  .workspace-summary > div + div {
+    border-top: 1px solid var(--lone-rule);
+    border-left: 0;
+  }
+
+  .workbench-context {
+    display: block;
+  }
+
+  .workbench-context dl {
+    margin-top: 16px;
+  }
+
+  .content {
+    padding: 18px 12px 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Keep the late ruler treatment single and explicit. */
+.sidebar {
+  border-right: 0;
+}
+
+.nav-item {
+  border-bottom: 0;
+}
