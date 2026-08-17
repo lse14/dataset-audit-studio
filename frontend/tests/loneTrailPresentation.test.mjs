@@ -24,7 +24,7 @@ test('approved workbench composition is present in the shared shell', async () =
     'models',
     'system',
   ]) {
-    assert.match(app, new RegExp(`id:\s*['"]${routeId}['"]`))
+    assert.match(app, new RegExp(`id:\\s*['"]${routeId}['"]`))
   }
 
   assert.match(styles, /--workbench-sidebar:\s*192px/)
