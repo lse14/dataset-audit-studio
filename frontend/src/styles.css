@@ -4465,3 +4465,12 @@ textarea:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Keep the late ruler treatment single and explicit. */
+.sidebar {
+  border-right: 0;
+}
+
+.nav-item {
+  border-bottom: 0;
+}
