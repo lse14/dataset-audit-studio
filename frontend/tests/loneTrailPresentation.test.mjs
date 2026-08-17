@@ -21,10 +21,10 @@ test('approved workbench composition is present in the shared shell', async () =
   const auditDefinition = app.match(/const auditPages[\s\S]*?(?=\nconst exportPage)/)?.[0] ?? ''
   const exportDefinition = app.match(/const exportPage[\s\S]*?(?=\nconst utilityPages)/)?.[0] ?? ''
   const utilityDefinition = app.match(/const utilityPages[\s\S]*?(?=\nconst pages)/)?.[0] ?? ''
-  assert.match(primaryDefinition, /id:\s*['"]tasks['"][\s\S]*id:\s*['"]progress['"]'/)
-  assert.match(auditDefinition, /id:\s*['"]risks['"][\s\S]*id:\s*['"]style['"][\s\S]*id:\s*['"]duplicates['"][\s\S]*id:\s*['"]aesthetics['"]'/)
-  assert.match(exportDefinition, /id:\s*['"]exports['"]'/)
-  assert.match(utilityDefinition, /id:\s*['"]models['"][\s\S]*id:\s*['"]system['"]'/)
+  assert.match(primaryDefinition, /id:\s*['"]tasks['"][\s\S]*id:\s*['"]progress['"]/)
+  assert.match(auditDefinition, /id:\s*['"]risks['"][\s\S]*id:\s*['"]style['"][\s\S]*id:\s*['"]duplicates['"][\s\S]*id:\s*['"]aesthetics['"]/)
+  assert.match(exportDefinition, /id:\s*['"]exports['"]/)
+  assert.match(utilityDefinition, /id:\s*['"]models['"][\s\S]*id:\s*['"]system['"]/)
 
   assert.match(styles, /--workbench-sidebar:\s*192px/)
   assert.match(styles, /--workbench-header:\s*98px/)
