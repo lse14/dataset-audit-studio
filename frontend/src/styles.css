@@ -4166,6 +4166,10 @@ textarea:hover {
   font-weight: 700;
 }
 
+.nav-sequence::before {
+  content: attr(data-sequence);
+}
+
 .nav-item {
   border-radius: 0;
   border-bottom: 1px solid var(--lone-rule);
@@ -4231,6 +4235,7 @@ textarea:hover {
 .workbench-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 224px;
+  grid-template-areas: "primary context";
   align-items: start;
   gap: 30px;
 }
@@ -4240,11 +4245,16 @@ textarea:hover {
   min-width: 0;
 }
 
+.workbench-primary {
+  grid-area: primary;
+}
+
 .page-stack {
   gap: 18px;
 }
 
 .workbench-context {
+  grid-area: context;
   min-width: 0;
   padding: 6px 0 0 22px;
   border-left: 1px solid var(--lone-ink);
@@ -4361,6 +4371,7 @@ textarea:focus-visible {
 @media (max-width: 1080px) {
   .workbench-grid {
     grid-template-columns: 1fr;
+    grid-template-areas: "primary" "context";
     gap: 24px;
   }
 

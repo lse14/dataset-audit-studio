@@ -330,7 +330,7 @@ export default function App() {
         title={item.label}
         type="button"
       >
-        <span aria-hidden="true" className="nav-sequence">{item.sequence}</span>
+        <span aria-hidden="true" className="nav-sequence" data-sequence={item.sequence} />
         <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
         <span>{item.label}</span>
       </button>
@@ -400,6 +400,38 @@ export default function App() {
 
         <div className="content">
           <div className="workbench-grid">
+            <aside className="workbench-context">
+              <span className="context-eyebrow">CURRENT CONTEXT</span>
+              <h2 aria-hidden="true">{active.title}</h2>
+              <dl>
+                <div>
+                  <dt>Task ID</dt>
+                  <dd>{selectedTask?.id ?? '未选择'}</dd>
+                </div>
+                <div>
+                  <dt>Task state</dt>
+                  <dd>{selectedTaskStatus}</dd>
+                </div>
+                <div>
+                  <dt>Worker</dt>
+                  <dd>{workerStatus}</dd>
+                </div>
+              </dl>
+              {page !== 'system' ? (
+                <label className="task-selector">
+                  <span>任务</span>
+                  <select
+                    onChange={(event) => setSelectedTaskId(event.target.value || null)}
+                    value={selectedTaskId ?? ''}
+                  >
+                    <option value="">未选择</option>
+                    {tasks.map((task) => (
+                      <option key={task.id} value={task.id}>{task.name}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </aside>
             <section className="workbench-primary">
               <Suspense fallback={<LoadingBlock label="正在加载页面" />}>
             {page === 'system' ? (
@@ -481,38 +513,6 @@ export default function App() {
             ) : null}
               </Suspense>
             </section>
-            <aside className="workbench-context">
-              <span className="context-eyebrow">CURRENT CONTEXT</span>
-              <h2>{active.title}</h2>
-              <dl>
-                <div>
-                  <dt>Task ID</dt>
-                  <dd>{selectedTask?.id ?? '未选择'}</dd>
-                </div>
-                <div>
-                  <dt>Task state</dt>
-                  <dd>{selectedTaskStatus}</dd>
-                </div>
-                <div>
-                  <dt>Worker</dt>
-                  <dd>{workerStatus}</dd>
-                </div>
-              </dl>
-              {page !== 'system' ? (
-                <label className="task-selector">
-                  <span>任务</span>
-                  <select
-                    onChange={(event) => setSelectedTaskId(event.target.value || null)}
-                    value={selectedTaskId ?? ''}
-                  >
-                    <option value="">未选择</option>
-                    {tasks.map((task) => (
-                      <option key={task.id} value={task.id}>{task.name}</option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-            </aside>
           </div>
         </div>
       </main>
