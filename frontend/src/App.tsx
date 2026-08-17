@@ -294,7 +294,7 @@ export default function App() {
   const selectedTaskName = selectedTask?.name ?? '未选择'
   const selectedTaskStatus = selectedTask ? statusLabel(selectedTask.status) : '未选择'
   const workerStatus = health
-    ? (health.worker.running ? statusLabel('running') : '已停止')
+    ? (health.worker.running ? '在线' : '已停止')
     : '未知'
   const onTaskChanged = async (updated?: Task) => {
     if (updated && !isBuiltinProfileTask(updated)) {
