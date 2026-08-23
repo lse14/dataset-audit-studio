@@ -431,6 +431,7 @@ def test_folder_scoped_clusters_risks_and_reversible_export_exclusions(
             for sample, code, severity, value in (
                 (alpha, "watermark_probability", "high", 0.9),
                 (alpha, "ocr_text_area_ratio", "medium", 0.4),
+                (alpha, "normal_metric", "info", 0.1),
                 (beta, "watermark_probability", "low", 0.2),
                 (root, "decode_warning", "fatal", 1.0),
             ):
@@ -511,6 +512,20 @@ def test_folder_scoped_clusters_risks_and_reversible_export_exclusions(
             "ocr_text_area_ratio",
             "watermark_probability",
         ]
+        overview = client.get(f"/api/tasks/{task['id']}/overview").json()
+        assert "normal_metric" not in {
+            item["name"] for item in overview["evidence_codes"]
+        }
+        info_risks = client.get(
+            f"/api/tasks/{task['id']}/risk-samples",
+            params={"folder": "Alpha", "severity": "info"},
+        ).json()
+        assert info_risks["total"] == 0
+        legacy_info_risks = client.get(
+            f"/api/tasks/{task['id']}/risks",
+            params={"code": "normal_metric"},
+        ).json()
+        assert legacy_info_risks["total"] == 0
         filtered_risks = client.get(
             f"/api/tasks/{task['id']}/risk-samples",
             params={"folder": "Alpha", "code": "ocr_text_area_ratio"},
@@ -525,6 +540,7 @@ def test_folder_scoped_clusters_risks_and_reversible_export_exclusions(
         assert severity_filtered_risks["items"][0]["sample_id"] == root_id
         risk_detail = client.get(f"/api/tasks/{task['id']}/risk-samples/{alpha_id}").json()
         assert len(risk_detail["evidence"]) == 2
+        assert {item["severity"] for item in risk_detail["evidence"]} == {"high", "medium"}
         assert risk_detail["manually_excluded"] is False
         assert (
             client.get(

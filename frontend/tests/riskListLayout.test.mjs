@@ -35,3 +35,12 @@ test('virtualized risk rows may use transform offsets without stacking unoffset 
     'virtualized .risk-row must use dedicated absolute positioning, not the shared event-row rule',
   )
 })
+
+test('risk review excludes informational measurements and resolves page decisions by sample ID', async () => {
+  const page = await readFile(RISKS_PAGE_PATH, 'utf8')
+
+  assert.doesNotMatch(page, /<option value="info">/)
+  assert.match(page, /sampleIds: risks\.items\.map|const sampleIds = risks\.items\.map/)
+  assert.match(page, /sampleIds,/)
+  assert.doesNotMatch(page, /状态不可用/)
+})

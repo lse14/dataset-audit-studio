@@ -37,6 +37,7 @@ export type CuratedReviewsQuery = {
   reasonCode?: string
   severity?: string
   candidateGroup?: string
+  sampleIds?: string[]
 }
 
 export type ReviewItemsQuery = {
@@ -126,6 +127,7 @@ export function listCuratedReviews(
     reasonCode,
     severity,
     candidateGroup,
+    sampleIds,
   }: CuratedReviewsQuery,
 ): Promise<ReviewList<CuratedReviewItem>> {
   const params = new URLSearchParams()
@@ -137,6 +139,7 @@ export function listCuratedReviews(
   if (reasonCode) params.set('reason_code', reasonCode)
   if (severity) params.set('severity', severity)
   if (candidateGroup) params.set('candidate_group', candidateGroup)
+  sampleIds?.forEach((sampleId) => params.append('sample_id', sampleId))
   return request<ReviewList<CuratedReviewItem>>(
     `/api/tasks/${taskId}/reviews/curated?${params.toString()}`,
   )

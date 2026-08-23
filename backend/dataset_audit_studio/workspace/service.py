@@ -53,7 +53,8 @@ class InvalidManualExclusion(TaskDomainError):
     pass
 
 
-_SEVERITY_BY_RANK = ("fatal", "high", "medium", "low", "info")
+_RISK_SEVERITIES = ("fatal", "high", "medium", "low")
+_SEVERITY_BY_RANK = (*_RISK_SEVERITIES, "info")
 
 
 class WorkspaceService:
@@ -112,7 +113,10 @@ class WorkspaceService:
             ).one()
             evidence_rows = session.execute(
                 select(Evidence.code, func.count())
-                .where(Evidence.task_id == task.id)
+                .where(
+                    Evidence.task_id == task.id,
+                    Evidence.severity.in_(_RISK_SEVERITIES),
+                )
                 .group_by(Evidence.code)
                 .order_by(func.count().desc(), Evidence.code)
             ).all()
@@ -211,7 +215,10 @@ class WorkspaceService:
                         Evidence.task_id == task_id,
                     ),
                 )
-                .where(Sample.task_id == task_id)
+                .where(
+                    Sample.task_id == task_id,
+                    Evidence.severity.in_(_RISK_SEVERITIES),
+                )
                 .group_by(Sample.artist_scope)
             ).all()
         sample_counts = {str(scope): int(count) for scope, count in sample_rows}
@@ -491,7 +498,10 @@ class WorkspaceService:
         code: str | None,
     ) -> RiskListView:
         TaskService(self.database).get_task(task_id)
-        filters = [Evidence.task_id == task_id]
+        filters = [
+            Evidence.task_id == task_id,
+            Evidence.severity.in_(_RISK_SEVERITIES),
+        ]
         if code is not None:
             filters.append(Evidence.code == code)
         severity_order = case(
@@ -563,6 +573,7 @@ class WorkspaceService:
             filters = [
                 Sample.task_id == task_id,
                 Evidence.task_id == task_id,
+                Evidence.severity.in_(_RISK_SEVERITIES),
             ]
             if folder is not None:
                 filters.append(Sample.artist_scope == folder)
@@ -622,6 +633,7 @@ class WorkspaceService:
             evidence_code_filters = [
                 Evidence.task_id == task_id,
                 Evidence.sample_id.in_(sample_ids),
+                Evidence.severity.in_(_RISK_SEVERITIES),
             ]
             if code is not None:
                 evidence_code_filters.append(Evidence.code == code)
@@ -681,6 +693,7 @@ class WorkspaceService:
             filters = [
                 Evidence.task_id == task_id,
                 Evidence.sample_id == sample_id,
+                Evidence.severity.in_(_RISK_SEVERITIES),
             ]
             if code is not None:
                 filters.append(Evidence.code == code)

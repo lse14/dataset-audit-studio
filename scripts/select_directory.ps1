@@ -20,6 +20,7 @@ Add-Type -TypeDefinition @'
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 
 [Flags]
 internal enum FileOpenDialogOptions : uint
@@ -103,6 +104,32 @@ internal class FileOpenDialog
 public static class NativeWindowsPicker
 {
     private const int ErrorCancelled = unchecked((int)0x800704C7);
+    private static readonly IntPtr HwndTopMost = new IntPtr(-1);
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoActivate = 0x0010;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(
+        IntPtr window,
+        StringBuilder title,
+        int maximumCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextLength(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(
+        IntPtr window,
+        IntPtr insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
     private static extern int SHCreateItemFromParsingName(
@@ -110,6 +137,45 @@ public static class NativeWindowsPicker
         IntPtr bindContext,
         ref Guid interfaceId,
         out IShellItem shellItem);
+
+    public static IntPtr GetWebUiOwner()
+    {
+        IntPtr foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero)
+        {
+            return IntPtr.Zero;
+        }
+
+        int titleLength = GetWindowTextLength(foreground);
+        if (titleLength <= 0)
+        {
+            return IntPtr.Zero;
+        }
+
+        var title = new StringBuilder(titleLength + 1);
+        GetWindowText(foreground, title, title.Capacity);
+        return title.ToString().IndexOf(
+                "Dataset Audit Studio",
+                StringComparison.OrdinalIgnoreCase) >= 0
+            ? foreground
+            : IntPtr.Zero;
+    }
+
+    public static void EnsureTopMost(IntPtr window)
+    {
+        if (window == IntPtr.Zero)
+        {
+            return;
+        }
+        SetWindowPos(
+            window,
+            HwndTopMost,
+            0,
+            0,
+            0,
+            0,
+            SwpNoSize | SwpNoMove | SwpNoActivate);
+    }
 
     public static string Show(
         string mode,
@@ -249,28 +315,39 @@ function Show-NativePicker(
     [string]$PickerDescription,
     [string]$PickerInitialPath
 ) {
-    # The backend starts this script as a detached, window-less child process, so there is no
-    # window of ours to own the dialog. Parenting it to whatever happened to be in the
-    # foreground would make an unrelated application appear to be blocked, so use a hidden
-    # top-most owner instead: it keeps the dialog above the browser without claiming a window
-    # that is not ours.
-    $owner = New-Object System.Windows.Forms.Form
-    $owner.TopMost = $true
-    $owner.ShowInTaskbar = $false
-    $owner.Opacity = 0
-    $owner.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
-    $owner.Size = New-Object System.Drawing.Size 1, 1
-    $owner.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
-    $owner.Location = New-Object System.Drawing.Point -32000, -32000
+    # A picker opened by the long-lived backend process has no natural owner. Use the WebUI
+    # browser window when the request was made from the foreground page. This keeps the picker
+    # above that page without making it permanently top-most over unrelated applications.
+    $owner = $null
 
     try {
-        # Shown off-screen so the owner HWND really exists and really is top-most; an owner
-        # that was never shown would not lift the dialog above the browser.
-        $owner.Show()
+        $ownerHandle = [NativeWindowsPicker]::GetWebUiOwner()
+        if ($ownerHandle -eq [IntPtr]::Zero) {
+            # The page may have lost focus in the short interval before the request reached the
+            # backend. Fall back to a tiny transparent owner on the cursor's current screen.
+            # Keeping it on-screen prevents the shell from positioning the owned dialog on a
+            # disconnected monitor, while SetWindowPos avoids relying only on WinForms state.
+            $owner = New-Object System.Windows.Forms.Form
+            $owner.TopMost = $true
+            $owner.ShowInTaskbar = $false
+            $owner.Opacity = 0
+            $owner.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+            $owner.Size = New-Object System.Drawing.Size 1, 1
+            $owner.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+            $workingArea = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+            $owner.Location = New-Object System.Drawing.Point -ArgumentList @(
+                $workingArea.X + [int](($workingArea.Width - $owner.Width) / 2),
+                $workingArea.Y + [int](($workingArea.Height - $owner.Height) / 2)
+            )
+            $owner.Show()
+            [NativeWindowsPicker]::EnsureTopMost($owner.Handle)
+            $ownerHandle = $owner.Handle
+        }
+
         $selectedPath = [NativeWindowsPicker]::Show(
             $PickerMode,
             $PickerDescription,
-            $owner.Handle,
+            $ownerHandle,
             $PickerInitialPath
         )
 
@@ -280,7 +357,9 @@ function Show-NativePicker(
         return "CANCELLED"
     }
     finally {
-        $owner.Dispose()
+        if ($null -ne $owner) {
+            $owner.Dispose()
+        }
     }
 }
 

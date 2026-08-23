@@ -65,23 +65,25 @@ export function RisksPage({ task, overview, folders, folder, onFolderChange, not
     setLoading(true)
     setError(null)
     setData(null)
-    void Promise.all([
-      listRiskSamples(task.id, { offset, limit, code, severity, folder, decision }),
-      listCuratedReviews(task.id, {
-        evidenceType: 'risk',
-        limit,
-        offset,
-        decision: decision === 'all' ? undefined : decision,
-        folder: folder || undefined,
-        reasonCode: code || undefined,
-        severity: severity || undefined,
-        candidateGroup: undefined,
-      }),
-    ])
-      .then(([risks, active]) => {
+    void listRiskSamples(task.id, { offset, limit, code, severity, folder, decision })
+      .then(async (risks) => {
+        const sampleIds = risks.items.map((item) => item.sample_id)
+        const active = sampleIds.length > 0
+          ? await listCuratedReviews(task.id, {
+              evidenceType: 'risk',
+              limit: sampleIds.length,
+              offset: 0,
+              decision: decision === 'all' ? undefined : decision,
+              folder: folder || undefined,
+              reasonCode: code || undefined,
+              severity: severity || undefined,
+              candidateGroup: undefined,
+              sampleIds,
+            })
+          : null
         if (!canceled) {
           setData(risks)
-          setDecisions(new Map(active.items.map((item) => [item.sample_id, item])))
+          setDecisions(new Map(active?.items.map((item) => [item.sample_id, item]) ?? []))
         }
       })
       .catch((reason: unknown) => { if (!canceled) setError(reason instanceof Error ? reason.message : '无法读取风险图片') })
@@ -171,7 +173,7 @@ export function RisksPage({ task, overview, folders, folder, onFolderChange, not
           <AuditDecisionTabs onChange={setDecision} value={decision} />
           <FolderScopeSelector folder={folder} folders={folders} metric="risk_sample_count" onChange={(value) => onFolderChange(value)} />
           <label><span>证据类型</span><select aria-label="证据类型" onChange={(event) => setCode(event.target.value)} value={code}><option value="">全部证据</option>{overview?.evidence_codes.map((item) => <option key={item.name} value={item.name}>{item.name} ({item.count})</option>)}</select></label>
-          <label><span>风险级别</span><select aria-label="风险级别" onChange={(event) => setSeverity(event.target.value)} value={severity}><option value="">全部级别</option><option value="fatal">致命</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option><option value="info">提示</option></select></label>
+          <label><span>风险级别</span><select aria-label="风险级别" onChange={(event) => setSeverity(event.target.value)} value={severity}><option value="">全部级别</option><option value="fatal">致命</option><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></label>
           {code === 'watermark_probability' ? <label><span>水印复核阈值</span><div className="inline-control"><input aria-label="水印复核阈值" max="1" min="0" onChange={(event) => setWatermarkThreshold(event.target.value)} step="0.001" type="number" value={watermarkThreshold} /><button className="button secondary" disabled={busy || !canReclassifyWatermark} onClick={() => void reclassifyWatermarkEvidence()} type="button">重判</button></div></label> : null}
         </div>
       </section>
@@ -179,7 +181,7 @@ export function RisksPage({ task, overview, folders, folder, onFolderChange, not
       {error ? <ErrorBlock message={error} /> : null}
       {loading && items.length === 0 ? <LoadingBlock label="正在读取风险图片" /> : null}
       {!loading && !error && data && items.length === 0 ? <EmptyState title="当前筛选没有风险证据" /> : null}
-      {items.length > 0 ? <section className="risk-list" ref={listParent}><div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>{virtualizer.getVirtualItems().map((row) => { const item = items[row.index]; const active = decisions.get(item.sample_id); return <article className="risk-row audit-row" key={item.sample_id} onClick={() => { setDetail(null); setDetailSampleId(item.sample_id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetail(null); setDetailSampleId(item.sample_id) } }} role="button" style={{ transform: `translateY(${row.start}px)` }} tabIndex={0}><span className="row-check" onClick={(event) => event.stopPropagation()}><input aria-label={`选择 ${item.relative_path}`} checked={selected.has(item.sample_id)} onChange={() => toggleSample(item.sample_id)} type="checkbox" /></span><Thumbnail alt={item.relative_path} onClick={() => setMediaSampleId(item.sample_id)} src={sampleThumbnailUrl(task.id, item.sample_id, 224)} /><div><strong title={item.relative_path}>{item.relative_path}</strong><span title={item.evidence_codes.join('、')}>{item.evidence_codes.join('、')}</span><small>{item.evidence_count.toLocaleString()} 条证据</small></div><span className={`severity ${item.highest_severity}`}>{item.highest_severity}</span>{active ? <StatusPill value={active.decision} /> : <span>状态不可用</span>}<Eye aria-label="查看证据" size={17} /></article> })}</div></section> : null}
+      {items.length > 0 ? <section className="risk-list" ref={listParent}><div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>{virtualizer.getVirtualItems().map((row) => { const item = items[row.index]; const active = decisions.get(item.sample_id); return <article className="risk-row audit-row" key={item.sample_id} onClick={() => { setDetail(null); setDetailSampleId(item.sample_id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetail(null); setDetailSampleId(item.sample_id) } }} role="button" style={{ transform: `translateY(${row.start}px)` }} tabIndex={0}><span className="row-check" onClick={(event) => event.stopPropagation()}><input aria-label={`选择 ${item.relative_path}`} checked={selected.has(item.sample_id)} onChange={() => toggleSample(item.sample_id)} type="checkbox" /></span><Thumbnail alt={item.relative_path} onClick={() => setMediaSampleId(item.sample_id)} src={sampleThumbnailUrl(task.id, item.sample_id, 224)} /><div><strong title={item.relative_path}>{item.relative_path}</strong><span title={item.evidence_codes.join('、')}>{item.evidence_codes.join('、')}</span><small>{item.evidence_count.toLocaleString()} 条证据</small></div><span className={`severity ${item.highest_severity}`}>{item.highest_severity}</span><StatusPill value={active?.decision ?? 'pending_review'} /><Eye aria-label="查看证据" size={17} /></article> })}</div></section> : null}
       <Pagination limit={limit} offset={offset} onChange={(nextOffset) => { setSelected(new Set()); setOffset(nextOffset) }} total={data?.total ?? 0} />
       <ConfirmDialog busy={busy} confirmLabel={confirm?.label ?? '确认'} danger={confirm?.danger} detail={`本次只修改明确勾选的 ${selected.size} 项，可再次选择并改回其他状态。`} onCancel={() => setConfirm(null)} onConfirm={() => void submitDecision()} open={confirm !== null} title="确认批量复核" />
       <ModalRiskDetail detail={detail} detailError={detailError} detailLoading={detailLoading} onClose={() => setDetailSampleId(null)} onOpenMedia={setMediaSampleId} open={detailSampleId !== null} taskId={task.id} />

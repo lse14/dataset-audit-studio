@@ -520,7 +520,24 @@ def test_picker_script_uses_the_windows_common_item_dialog() -> None:
     assert "SHCreateItemFromParsingName" in script
     assert "ComDialogFilterSpec" in script
     assert "int Show(IntPtr owner);" in script
+    assert "GetForegroundWindow" in script
+    assert "GetWebUiOwner" in script
+    assert '"Dataset Audit Studio"' in script
+    assert "SetWindowPos" in script
+    assert "PrimaryScreen" in script
+    assert "WorkingArea" in script
+    assert "-32000" not in script
     assert "$dialog.Dispose()" not in script
+
+
+def test_picker_owner_is_created_on_a_visible_working_area() -> None:
+    script = (
+        Path(__file__).parents[1] / "scripts" / "select_directory.ps1"
+    ).read_text(encoding="utf-8")
+
+    assert "-32000, -32000" not in script
+    assert "WorkingArea" in script
+    assert "PrimaryScreen" in script
 
 
 def test_picker_script_server_announces_ready_and_stops_on_quit() -> None:

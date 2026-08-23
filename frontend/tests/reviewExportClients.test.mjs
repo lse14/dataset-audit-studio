@@ -147,8 +147,9 @@ test('curated review listing preserves URLSearchParams order and encoding', asyn
       folder: 'alpha / beta & gamma',
       severity: 'high risk',
       candidateGroup: 'group / A',
+      sampleIds: ['sample / 1', 'sample & 2'],
     }), payload)
-    assert.equal(calls[0].path, '/api/tasks/task-1/reviews/curated?evidence_type=duplicate&limit=100&offset=50&decision=pending+review&folder=alpha+%2F+beta+%26+gamma&severity=high+risk&candidate_group=group+%2F+A')
+    assert.equal(calls[0].path, '/api/tasks/task-1/reviews/curated?evidence_type=duplicate&limit=100&offset=50&decision=pending+review&folder=alpha+%2F+beta+%26+gamma&severity=high+risk&candidate_group=group+%2F+A&sample_id=sample+%2F+1&sample_id=sample+%26+2')
     assert.equal(calls[0].options.method, undefined)
   })
 })
