@@ -1,5 +1,18 @@
 # Roadmap
 
+## 外部热补丁审查与合入（2026-08-23）
+
+- [x] 核对补丁包 SHA-256、包内逐文件 SHA-256、基线提交与声明的 8 个变更路径。
+- [x] 在 `1f2c99ecb521f3b4de0bc570d527ffecf908381f` 的干净临时 worktree 中验证补丁可应用、聚焦测试和前端构建。
+- [x] 将风险接口排除 `info` 测量、风险页按完整 `sample_id` 查询复核状态，并整合 Windows 原生窗口前台归属与主屏可见回退。
+- [x] 保留工作区已有的 `PrimaryScreen.WorkingArea` 约束和回归测试，不覆盖用户改动。
+
+### 验证结果
+
+- 压缩包 SHA-256：`d803ed273ca2f484e760ee5737f6713e7a3b1538cc1e7e0b45594e09129d1d91`，与旁车摘要一致。
+- 官方 `scripts/test.ps1`：后端 `573 passed, 1 skipped`，前端 `140 passed`，生产构建通过，E2E `44 passed`；Ruff、组件边界和第三方报告通过。
+- 当前分支未创建提交：工作区在审查前已有用户未提交改动，补丁已合入工作树但未将无关改动一并提交。
+
 ## 启动入口前端构建（2026-08-17）
 
 - [x] 让 `start_webui.bat` 在复用现有服务或启动新服务之前，使用项目内 Node 重新构建前端静态资源。
@@ -147,6 +160,20 @@ Restore the local WebUI startup after removing obsolete local runtime data and r
 - On Windows 11 Pro build 26200, real directory and file picker smoke runs opened the dialog, accepted an automated Escape, returned `CANCELLED` with exit code 0, and emitted no stderr.
 - A repository-wide search found no remaining `FolderBrowserDialog`, WinForms `OpenFileDialog`, or `ShowDialog` picker call outside the regression assertion.
 - The broader Playwright runner repeats a pre-existing shutdown hang in this desktop environment: the 11 task-workflow cases reached their final case without reporting a test failure, and the focused help flow rendered its desktop/mobile screenshots, but neither command returned a final runner exit code before the outer limit. These runs are not counted as passing verification.
+
+## Native Picker Visible-Owner Hang Fix (2026-08-23)
+
+- [x] 修复新建任务点击 Windows 目录选择按钮后前端一直等待、用户看不到目录窗口的问题。
+- [x] 根因确认：`scripts/select_directory.ps1` 将 Common Item Dialog 的隐藏 owner 放在 `(-32000, -32000)`；后端同步等待选择结果，窗口不可见时请求表现为卡死。
+- [x] 将 owner 放到主屏 `WorkingArea` 中央，保留 Windows 11 `IFileDialog`、STA、常驻宿主、取消和路径回填语义。
+- [x] 新增源码契约，禁止屏外坐标并要求使用 `PrimaryScreen.WorkingArea`。
+
+### 验证结果
+
+- 回归测试先因发现 `-32000, -32000` 失败，修复后通过。
+- `tests/test_windows_dialog.py tests/test_directory_selection_api.py`：`23 passed`。
+- Windows PowerShell server smoke：输出 `READY`，以 EOF 正常退出。
+- 项目内 Node 执行 `frontend` 生产构建通过，生成 `frontend/dist` 新哈希资源。
 
 ## Zero-weight Style Model Gating
 
@@ -853,3 +880,15 @@ Restore the local WebUI startup after removing obsolete local runtime data and r
 
 - 源码视觉契约先失败后通过；前端单测 `139/139`、生产构建、Playwright `44/44` 和 `git diff --check` 均通过。
 - `http://127.0.0.1:7865/#tasks` 的 `1440x900` 与 `390x844` 截图确认：桌面任务栏位于主内容左侧，窄屏无横向溢出且主内容保持优先。
+
+## 风险详情中文说明（2026-08-24）
+
+- [x] 仅在风险详情弹窗增加中文指标名和简短判断说明；保留英文代码、来源、检测值和阈值，不改后端接口或风险计算。
+- [x] 已覆盖现有常见技术、OCR、水印、AI、画风、重复和扫描异常代码；未知代码回退为原代码并显示通用中文说明。
+- [x] 新增前端文案契约，要求说明包含中文且保持简短，避免影响复核判断效率。
+
+### 验证结果
+
+- 先观察中文详情契约失败，再完成最小前端实现并通过该契约。
+- 前端全量单测 `141/141`、生产构建和 `git diff --check` 通过。
+- 项目 Playwright Chromium 在 `1440x900` 打开风险详情弹窗，确认中文标题、短说明、英文代码、检测值和阈值同时显示；页面无控制台 warning/error。临时脚本和截图已清理。

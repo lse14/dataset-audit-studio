@@ -1,5 +1,13 @@
 # Memory
 
+## 外部热补丁审查与合入（2026-08-23）
+
+- 收到 `F:\QQ\dataset-audit-studio-hotfix-1f2c99e-20260823.zip` 及摘要文件；外层 SHA-256 已核对为 `d803ed273ca2f484e760ee5737f6713e7a3b1538cc1e7e0b45594e09129d1d91`，包内 `SHA256SUMS.txt` 的 13 个文件也全部匹配。
+- 补丁基线为当前 `main` 的 `1f2c99ecb521f3b4de0bc570d527ffecf908381f`，声明两个修复：风险 API/页面排除 `info` 证据，以及风险页按完整 `sample_id` 对齐复核状态；另含 Windows 原生 picker owner 改进。
+- 当前工作区已有 Windows picker 的主屏可见 owner 改动。合入时保留该已确认约束，加入前台 Dataset Audit Studio 窗口优先归属；前台窗口不可识别时仍使用主屏 `WorkingArea` 的透明 owner，不采用屏外坐标。
+- 官方 `scripts/test.ps1` 最终验证：`573 passed, 1 skipped`、前端 `140 passed`、生产构建和 E2E `44 passed`，Ruff、组件边界、第三方报告均通过。
+- 本次仅合入工作树，未创建 commit，以免把既有用户未提交改动和临时测试产物一并提交。
+
 ## Confirmed Request
 
 - Restore `start_webui.bat`.
@@ -299,6 +307,13 @@
 - 宿主须为生产 WebUI 的应用作用域资源，正常关闭时清理；预热失败不能阻止 WebUI 启动，不增加依赖或修改用户数据。
 - 追加回归先证明普通 `RuntimeError` 会从预热穿透并阻断 FastAPI 生命周期；`main.py` 现将该可选优化的异常隔离为 `Exception`（不捕获退出信号），测试确认健康检查仍为 `200` 且宿主会关闭。
 - `tests/test_windows_dialog.py` 与 `tests/test_directory_selection_api.py` 聚焦回归为 `18 passed`，改动 Python 文件 Ruff 通过。真实无界面宿主首次预热为 `505.9 ms`，第二次 `start()` 为 `0.01 ms` 且复用同一 PID，`QUIT` 后退出码为 `0`。
+
+## Confirmed Native Picker Visible-Owner Fix (2026-08-23)
+
+- 用户报告新建任务点击 Windows 目录选择按钮后前端显示等待，后端无错误。
+- 证据链定位到 `scripts/select_directory.ps1`：Common Item Dialog 的隐藏顶置 owner 被放在 `(-32000, -32000)`，而 `NativePickerHost.select()` 同步等待 `stdout.readline()`；窗口不可见时 HTTP 请求自然保持 pending。
+- 最小修复将 owner 放到 `[Screen]::PrimaryScreen.WorkingArea` 中央；没有改变 API、协议、对话框类型或取消语义。
+- 新增 `test_picker_owner_is_created_on_a_visible_working_area`，先失败后通过；相关后端测试 `23 passed`，项目内 Node 生产构建通过。
 - 为避免干扰用户现有“选择源数据目录”窗口，本轮未调用真实 `Show()`；连续目录/文件选择、取消及视觉窗口出现耗时仍待窗口关闭后人工确认。
 
 ## Confirmed Audit Selection Overlay Fix
@@ -407,3 +422,9 @@
 - 最新确认覆盖此前“任务上下文在左侧”的方向：进度、风险、画风等页面的 `.workbench-context` 在桌面网格固定为最右受限列，主内容在左且分隔线朝左；`390px` 继续主内容在前、上下文在后。`#progress` 量测桌面主内容/上下文为 `x=248–1110` 与 `x=1134–1384`，移动端分别为 `top=303` 与 `top=443`，均无横向溢出或控制台 warning/error。孤星 Skill 已同步为右侧上下文规则。
 - 用户进一步确认“最右侧”是工作区右内边距，不是仅位于受限内容网格的右列。超过 `1732px` 时，仅 `.workbench-grid` 向右延伸，保留主内容既有起始对齐；`#exports` 在 `1920x1080` 下主内容为 `x=342–1505`、上下文为 `x=1529–1864`，右边距 `56px`。窄屏规则不变；孤星 Skill 已同步，且无控制台 warning/error 或水平溢出。
 - `start_webui.bat` 的实际入口 `launch_webui.ps1` 现先用项目内 `.runtime\\node\\npm.cmd` 执行 `--prefix frontend run build`，再检查或启动 `7865` 服务。因此前端修改会生成新哈希静态资源，现有服务也能在本次启动操作后提供新包；本机实际运行已产出 `index-aXhUIGp5.js` 和 `index-D61IFBO3.css`。全局 `design-lone-trail-frontend` Skill 的 Finish Check 已同步要求通过正常启动入口重建并确认服务的哈希入口。
+
+## Risk Detail Chinese Explanations (2026-08-24)
+
+- 风险详情弹窗现在显示中文指标名称和“数值意味着什么”的短说明，同时保留英文代码、来源、检测值与阈值，便于追溯。
+- 文案映射位于 `frontend/src/riskEvidenceHelp.ts`，覆盖常见技术、OCR、水印、AI、画风、重复和扫描异常代码；未知代码显示原代码并回退通用说明。
+- 验证：前端单测 `141/141`、生产构建通过；Playwright 模拟风险详情接口后确认中文弹窗内容，控制台无 warning/error。
