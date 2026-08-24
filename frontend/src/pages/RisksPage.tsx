@@ -8,6 +8,7 @@ import {
   submitCuratedReviewDecisions,
 } from '../clients/reviews'
 import { getRiskSampleDetail, listRiskSamples, sampleThumbnailUrl } from '../clients/workspace'
+import { getRiskEvidenceExplanation, getRiskEvidenceLabel } from '../riskEvidenceHelp'
 import type { CuratedReviewItem, RiskEvidence, RiskSampleDetail, RiskSampleList, TaskOverview } from '../types'
 import {
   AuditDecisionTabs,
@@ -199,7 +200,7 @@ function DecisionButton({ danger = false, disabled, label, onClick }: { danger?:
 }
 
 function EvidenceDetail({ evidence }: { evidence: RiskEvidence }) {
-  return <article className="evidence-detail"><header><div><strong>{evidence.code}</strong><span>{evidence.source}</span></div><span className={`severity ${evidence.severity}`}>{evidence.severity}</span></header><dl><div><dt>检测值</dt><dd>{formatEvidence(evidence.value_number ?? evidence.value)}</dd></div><div><dt>阈值</dt><dd>{formatEvidence(evidence.threshold_number ?? evidence.threshold)}</dd></div></dl></article>
+  return <article className="evidence-detail"><header><div><strong>{getRiskEvidenceLabel(evidence.code)}</strong><span>英文代码：{evidence.code}</span><span>{evidence.source}</span></div><span className={`severity ${evidence.severity}`}>{evidence.severity}</span></header><p className="evidence-detail-explanation">{getRiskEvidenceExplanation(evidence.code)}</p><dl><div><dt>检测值</dt><dd>{formatEvidence(evidence.value_number ?? evidence.value)}</dd></div><div><dt>阈值</dt><dd>{formatEvidence(evidence.threshold_number ?? evidence.threshold)}</dd></div></dl></article>
 }
 
 function formatEvidence(value: unknown) {

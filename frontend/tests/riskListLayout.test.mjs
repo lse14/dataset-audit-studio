@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { getRiskEvidenceExplanation, getRiskEvidenceLabel } from '../src/riskEvidenceHelp.ts'
+
 const STYLES_PATH = fileURLToPath(new URL('../src/styles.css', import.meta.url))
 const RISKS_PAGE_PATH = fileURLToPath(new URL('../src/pages/RisksPage.tsx', import.meta.url))
 
@@ -43,4 +45,17 @@ test('risk review excludes informational measurements and resolves page decision
   assert.match(page, /sampleIds: risks\.items\.map|const sampleIds = risks\.items\.map/)
   assert.match(page, /sampleIds,/)
   assert.doesNotMatch(page, /状态不可用/)
+})
+
+test('risk detail cards include Chinese metric names and explanations while retaining codes', async () => {
+  const page = await readFile(RISKS_PAGE_PATH, 'utf8')
+
+  assert.match(page, /getRiskEvidenceLabel\(evidence\.code\)/)
+  assert.match(page, /getRiskEvidenceExplanation\(evidence\.code\)/)
+  assert.equal(getRiskEvidenceLabel('watermark_probability'), '水印概率')
+  const watermarkExplanation = getRiskEvidenceExplanation('watermark_probability')
+  assert.match(watermarkExplanation, /水印/)
+  assert.ok(watermarkExplanation.length < 40, 'risk explanations should stay short and easy to judge')
+  assert.equal(getRiskEvidenceLabel('future_metric'), 'future_metric')
+  assert.match(getRiskEvidenceExplanation('future_metric'), /暂无专门的中文说明/)
 })

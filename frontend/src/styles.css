@@ -2533,6 +2533,13 @@ dd,
   font-size: 9px;
 }
 
+.evidence-detail-explanation {
+  margin: 9px 0 0;
+  color: #48544d;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .evidence-detail dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
