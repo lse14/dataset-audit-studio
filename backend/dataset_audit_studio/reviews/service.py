@@ -811,6 +811,10 @@ class ReviewService:
                 select(Sample, Evidence)
                 .join(Evidence, Evidence.sample_id == Sample.id)
                 .where(Sample.task_id == task.id, Evidence.task_id == task.id)
+                .where(Sample.id.in_(sample_ids) if sample_ids else True)
+                .where(Evidence.code == reason_code if reason_code is not None else True)
+                .where(Evidence.severity.in_(("fatal", "high", "medium", "low"))
+                       if evidence_type == "risk" else True)
                 .order_by(Sample.id, Evidence.id)
             ).all()
             unique: dict[str, tuple[Sample, str, float | None, str | None, str | None]] = {}
@@ -944,6 +948,9 @@ class ReviewService:
                     select(Sample, Evidence)
                     .join(Evidence, Evidence.sample_id == Sample.id)
                     .where(Sample.task_id == task_id, Evidence.task_id == task_id)
+                    .where(Sample.id.in_(selection.sample_ids) if selection.sample_ids else True)
+                    .where(Evidence.severity.in_(("fatal", "high", "medium", "low"))
+                           if selection.evidence_type == "risk" else True)
                     .order_by(Sample.id, Evidence.id)
                 ).all()
                 for sample, evidence in rows:
@@ -1010,7 +1017,13 @@ class ReviewService:
                         category=category,
                         decision=decision.value,
                         source="human",
-                        context_json={"selection": selector, "evidence": metadata},
+                        context_json={
+                            "selection": (
+                                {**selector, "sample_ids": [sample_id], "batch_size": len(unique)}
+                                if selection.evidence_type == "risk" else selector
+                            ),
+                            "evidence": metadata,
+                        },
                         supersedes_id=previous.id if previous is not None else None,
                         is_active=True,
                     )

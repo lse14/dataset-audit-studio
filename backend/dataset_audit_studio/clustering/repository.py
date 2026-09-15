@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.orm import Session
 
 from dataset_audit_studio.clustering.assets import SIGLIP_MODEL_ID
@@ -14,12 +14,14 @@ from dataset_audit_studio.clustering.dedupe import semantic_duplicate_groups
 from dataset_audit_studio.clustering.types import (
     ClusteringScope,
     ClusterPlanNode,
+    DuplicateGroup,
     EmbeddingSample,
     EmbeddingShard,
     SAEArtifact,
 )
 from dataset_audit_studio.components.cluster_hierarchy.algorithm import (
     CHARACTER_CONSISTENCY_ALGORITHM_VERSION,
+    ClusteringInterrupted,
     analyze_character_scope,
     character_consistency_config_hash,
     character_consistency_config_payload,
@@ -316,6 +318,36 @@ class ClusteringRepository:
             artifact.metadata_json = metadata
 
     @staticmethod
+    def prepare_semantic_duplicate_groups(
+        *,
+        scope: ClusteringScope,
+        nodes: tuple[ClusterPlanNode, ...],
+        samples: tuple[EmbeddingSample, ...],
+        embeddings: np.ndarray,
+        threshold: float,
+        should_stop: Callable[[], bool],
+    ) -> dict[str, tuple[DuplicateGroup, ...]]:
+        """Compute leaf similarities before opening the checkpoint write transaction."""
+        local_samples = tuple(samples[index] for index in scope.sample_indices)
+        prepared = {}
+        for node in nodes:
+            if should_stop():
+                raise ClusteringInterrupted("Semantic duplicate preparation interrupted")
+            if not node.is_leaf or len(node.sample_indices) < 2:
+                continue
+            leaf = tuple(local_samples[index] for index in node.sample_indices)
+            prepared[node.cluster_key] = semantic_duplicate_groups(
+                tuple(range(len(leaf))),
+                embeddings[list(node.sample_indices)],
+                threshold=threshold,
+                rank=lambda index, members=leaf: (
+                    members[index].relative_path, members[index].sample_id,
+                ),
+                stable_keys=tuple(sample.sample_id for sample in leaf),
+            )
+        return prepared
+
+    @staticmethod
     def persist_cluster_scope(
         session: Session,
         *,
@@ -329,6 +361,7 @@ class ClusteringRepository:
         character_consistency: Mapping[str, object] | None = None,
         semantic_duplicate_threshold: float = 0.92,
         embedding_identity: Mapping[str, object] | None = None,
+        prepared_semantic_groups: Mapping[str, tuple[DuplicateGroup, ...]] | None = None,
     ) -> None:
         if prepare:
             session.execute(delete(ClusterNode).where(ClusterNode.task_id == task_id))
@@ -374,9 +407,10 @@ class ClusteringRepository:
             session.flush()
             id_by_key[node.cluster_key] = row.id
             similarities = scope_embeddings[list(node.sample_indices)] @ node.centroid
+            memberships: list[dict] = []
             for position, local_index in enumerate(node.sample_indices):
-                session.add(
-                    ClusterMembership(
+                memberships.append(
+                    dict(
                         cluster_id=row.id,
                         sample_id=local_sample_ids[local_index],
                         task_id=task_id,
@@ -384,6 +418,11 @@ class ClusteringRepository:
                         is_representative=local_index == node.representative_index,
                     )
                 )
+                if len(memberships) >= 1000:
+                    session.execute(insert(ClusterMembership), memberships)
+                    memberships.clear()
+            if memberships:
+                session.execute(insert(ClusterMembership), memberships)
         if embedding_identity is not None:
             ClusteringRepository._persist_semantic_duplicates(
                 session,
@@ -397,6 +436,7 @@ class ClusteringRepository:
                 hierarchy_config_hash=hierarchy_config_hash,
                 semantic_duplicate_threshold=semantic_duplicate_threshold,
                 embedding_identity=embedding_identity,
+                prepared_groups=prepared_semantic_groups,
             )
         if character_consistency is not None:
             ClusteringRepository._persist_character_consistency(
@@ -473,6 +513,7 @@ class ClusteringRepository:
         hierarchy_config_hash: str,
         semantic_duplicate_threshold: float,
         embedding_identity: Mapping[str, object],
+        prepared_groups: Mapping[str, tuple[DuplicateGroup, ...]] | None = None,
     ) -> None:
         for node in nodes:
             if not node.is_leaf or len(node.sample_indices) < 2:
@@ -503,8 +544,13 @@ class ClusteringRepository:
             leaf_relative_paths = tuple(
                 relative_path_by_id[sample_id] for sample_id in leaf_sample_ids
             )
+            if prepared_groups is not None and leaf_relative_paths != tuple(
+                relative_paths[index] for index in leaf_indices
+            ):
+                raise RuntimeError("Leaf sample paths changed during duplicate preparation")
             leaf_embeddings = embeddings[list(leaf_indices)]
-            groups = semantic_duplicate_groups(
+            groups = prepared_groups[node.cluster_key] if prepared_groups is not None else (
+                semantic_duplicate_groups(
                 tuple(range(len(leaf_indices))),
                 leaf_embeddings,
                 threshold=semantic_duplicate_threshold,
@@ -513,6 +559,7 @@ class ClusteringRepository:
                     ids[index],
                 ),
                 stable_keys=leaf_sample_ids,
+                )
             )
             for group in groups:
                 representative_sample_id = leaf_sample_ids[group.representative_index]

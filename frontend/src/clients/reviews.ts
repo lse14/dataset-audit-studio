@@ -203,7 +203,7 @@ export function submitCuratedReviewDecisions(
   taskId: string,
   input: CuratedReviewDecisionsInput,
 ) {
-  return request(`/api/tasks/${taskId}/reviews/curated/decisions`, {
+  return request<{ selected: number; changed: number; decision: string }>(`/api/tasks/${taskId}/reviews/curated/decisions`, {
     method: 'POST',
     ...jsonBody(input),
   })

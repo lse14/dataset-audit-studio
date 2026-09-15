@@ -28,7 +28,8 @@ test('virtualized risk rows may use transform offsets without stacking unoffset 
   assert.match(page, /getScrollElement:/)
   assert.match(page, /className="risk-list"/)
   assert.match(page, /translateY\(\$\{/)
-  assert.match(page, /const limit = 100/)
+  assert.match(page, /\[limit, setLimit\] = useState\(200\)/)
+  assert.match(page, /option value=\{500\}/)
   assert.doesNotMatch(page, /className="risk-list"[^>]*>\{items\.map/)
 
   assert.match(
@@ -43,7 +44,7 @@ test('risk review excludes informational measurements and resolves page decision
 
   assert.doesNotMatch(page, /<option value="info">/)
   assert.match(page, /sampleIds: risks\.items\.map|const sampleIds = risks\.items\.map/)
-  assert.match(page, /sampleIds,/)
+  assert.match(page, /sampleIds: pageIds,/)
   assert.doesNotMatch(page, /状态不可用/)
 })
 

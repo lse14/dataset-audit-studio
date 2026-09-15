@@ -977,30 +977,32 @@ class ExportRunPlanner:
     ) -> dict[str, list[AestheticScoreRecord]]:
         if threshold is None:
             return {}
-        rows = session.scalars(
-            select(Evidence)
-            .where(
-                Evidence.task_id == task_id,
-                Evidence.sample_id.in_(sample_ids),
-                Evidence.code == "aesthetic_score",
-            )
-            .order_by(Evidence.sample_id, Evidence.id)
-        ).all()
         evidence: dict[str, list[AestheticScoreRecord]] = defaultdict(list)
-        for row in rows:
-            metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
-            value = row.value_json
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                value = row.value_number
-            evidence[row.sample_id].append(
-                AestheticScoreRecord(
-                    value=value,
-                    source=row.source,
-                    model_id=metadata.get("model_id"),
-                    config_hash=metadata.get("config_hash"),
-                    algorithm_version=row.algorithm_version,
+        # Bound SQLite parameters independently of the dataset size.
+        for offset in range(0, len(sample_ids), 500):
+            rows = session.scalars(
+                select(Evidence)
+                .where(
+                    Evidence.task_id == task_id,
+                    Evidence.sample_id.in_(sample_ids[offset : offset + 500]),
+                    Evidence.code == "aesthetic_score",
                 )
-            )
+                .order_by(Evidence.sample_id, Evidence.id)
+            ).all()
+            for row in rows:
+                metadata = row.metadata_json if isinstance(row.metadata_json, dict) else {}
+                value = row.value_json
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    value = row.value_number
+                evidence[row.sample_id].append(
+                    AestheticScoreRecord(
+                        value=value,
+                        source=row.source,
+                        model_id=metadata.get("model_id"),
+                        config_hash=metadata.get("config_hash"),
+                        algorithm_version=row.algorithm_version,
+                    )
+                )
         return evidence
 
     def _sample(self, task: Task, row: Sample) -> DatasetSample:

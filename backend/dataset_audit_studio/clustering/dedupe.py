@@ -113,6 +113,7 @@ def visual_duplicate_groups(
     phash_max_distance: int,
     colorhash_max_distance: int,
     rank: Callable[[int], RankKey],
+    heartbeat: Callable[[], None] | None = None,
 ) -> tuple[DuplicateGroup, ...]:
     valid = [
         index
@@ -124,6 +125,8 @@ def visual_duplicate_groups(
     tree = _BKNode(int(phashes[valid[0]] or "0", 16), valid[0])
     union = _UnionFind(valid)
     for index in valid[1:]:
+        if heartbeat is not None:
+            heartbeat()
         phash = int(phashes[index] or "0", 16)
         matches: list[int] = []
         tree.query(phash, phash_max_distance, matches)

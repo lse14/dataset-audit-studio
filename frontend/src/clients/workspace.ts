@@ -70,6 +70,18 @@ export function listRiskSamples(
   )
 }
 
+export function listRiskSampleIds(
+  taskId: string,
+  { code, severity, folder, decision }: Omit<RiskListQuery, 'offset' | 'limit'>,
+): Promise<string[]> {
+  const query = new URLSearchParams()
+  if (code) query.set('code', code)
+  if (severity) query.set('severity', severity)
+  if (folder) query.set('folder', folder)
+  if (decision && decision !== 'all') query.set('decision', decision)
+  return request<string[]>(`/api/tasks/${taskId}/risk-sample-ids?${query}`)
+}
+
 export function getRiskSampleDetail(
   taskId: string,
   sampleId: string,

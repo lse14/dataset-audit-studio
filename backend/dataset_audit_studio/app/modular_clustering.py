@@ -628,6 +628,14 @@ class ModularClusteringComponentService:
                     config=component_config,
                     should_stop=lambda: self._control_requested(task.id),
                 )
+                prepared_semantic_groups = self.repository.prepare_semantic_duplicate_groups(
+                    scope=scope,
+                    nodes=nodes,
+                    samples=samples,
+                    embeddings=local_embeddings,
+                    threshold=component_config.semantic_duplicate_threshold,
+                    should_stop=lambda: self._control_requested(task.id),
+                )
             except ClusteringInterrupted:
                 cursor = self._hierarchy_cursor(
                     identity_digest,
@@ -683,6 +691,7 @@ class ModularClusteringComponentService:
                 current_scope: ClusteringScope = scope,
                 current_nodes=nodes,
                 current_embeddings=local_embeddings,
+                current_semantic_groups=prepared_semantic_groups,
                 prepare=not prepared,
             ) -> None:
                 self.repository.persist_cluster_scope(
@@ -697,6 +706,7 @@ class ModularClusteringComponentService:
                     character_consistency=character_consistency,
                     semantic_duplicate_threshold=component_config.semantic_duplicate_threshold,
                     embedding_identity=embedding_identity,
+                    prepared_semantic_groups=current_semantic_groups,
                 )
 
             result = self._commit(

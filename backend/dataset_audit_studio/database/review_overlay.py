@@ -19,19 +19,21 @@ def active_human_overlay_by_sample(
     ids = tuple(dict.fromkeys(sample_ids))
     if not ids:
         return {}
-    rows = session.scalars(
-        select(ReviewDecision)
-        .where(
-            ReviewDecision.task_id == task_id,
-            ReviewDecision.sample_id.in_(ids),
-            ReviewDecision.source == "human",
-            ReviewDecision.decision.in_(HUMAN_OVERLAY_DECISIONS),
-            ReviewDecision.is_active.is_(True),
-        )
-        .order_by(ReviewDecision.created_at.desc(), ReviewDecision.id.desc())
-    ).all()
     grouped: dict[str, list[ReviewDecision]] = {}
-    for row in rows:
-        if row.sample_id is not None:
-            grouped.setdefault(row.sample_id, []).append(row)
+    # Bound SQLite parameters independently of the dataset size.
+    for offset in range(0, len(ids), 500):
+        rows = session.scalars(
+            select(ReviewDecision)
+            .where(
+                ReviewDecision.task_id == task_id,
+                ReviewDecision.sample_id.in_(ids[offset : offset + 500]),
+                ReviewDecision.source == "human",
+                ReviewDecision.decision.in_(HUMAN_OVERLAY_DECISIONS),
+                ReviewDecision.is_active.is_(True),
+            )
+            .order_by(ReviewDecision.created_at.desc(), ReviewDecision.id.desc())
+        ).all()
+        for row in rows:
+            if row.sample_id is not None:
+                grouped.setdefault(row.sample_id, []).append(row)
     return {sample_id: tuple(items) for sample_id, items in grouped.items()}

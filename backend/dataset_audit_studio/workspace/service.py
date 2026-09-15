@@ -554,6 +554,37 @@ class WorkspaceService:
             limit=limit,
         )
 
+    def risk_sample_ids(
+        self, task_id: str, *, code: str | None = None, folder: str | None = None,
+        severity: str | None = None, decision: str = "all",
+    ) -> list[str]:
+        TaskService(self.database).get_task(task_id)
+        self._validate_audit_decision(decision)
+        with self.database.read_session() as session:
+            self._validate_folder(session, task_id, folder)
+            filters, active = self._risk_sample_filters(task_id, code, folder, severity, decision)
+            statement = select(Sample.id).join(Evidence, Evidence.sample_id == Sample.id)
+            if active is not None:
+                statement = statement.outerjoin(active, self._active_human_overlay_join(active))
+            return list(session.scalars(statement.where(*filters).distinct().order_by(Sample.id)))
+
+    def _risk_sample_filters(self, task_id, code, folder, severity, decision):
+        filters = [
+            Sample.task_id == task_id, Evidence.task_id == task_id,
+            Evidence.severity.in_(_RISK_SEVERITIES),
+        ]
+        if folder is not None:
+            filters.append(Sample.artist_scope == folder)
+        if code is not None:
+            filters.append(Evidence.code == code)
+        if severity is not None:
+            filters.append(Evidence.severity == severity)
+        active = None
+        if decision != "all":
+            active = aliased(ReviewDecision)
+            filters.append(self._audit_decision_filter(active, decision))
+        return filters, active
+
     def risk_samples(
         self,
         task_id: str,
@@ -570,21 +601,7 @@ class WorkspaceService:
         severity_rank = self._severity_rank()
         with self.database.read_session() as session:
             self._validate_folder(session, task_id, folder)
-            filters = [
-                Sample.task_id == task_id,
-                Evidence.task_id == task_id,
-                Evidence.severity.in_(_RISK_SEVERITIES),
-            ]
-            if folder is not None:
-                filters.append(Sample.artist_scope == folder)
-            if code is not None:
-                filters.append(Evidence.code == code)
-            if severity is not None:
-                filters.append(Evidence.severity == severity)
-            active = None
-            if decision != "all":
-                active = aliased(ReviewDecision)
-                filters.append(self._audit_decision_filter(active, decision))
+            filters, active = self._risk_sample_filters(task_id, code, folder, severity, decision)
             total_statement = (
                 select(func.count(func.distinct(Sample.id)))
                 .select_from(Sample)

@@ -130,7 +130,7 @@ def task_risk_samples(
     task_id: str,
     request: Request,
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
     code: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
     folder: Annotated[str | None, Query(min_length=1, max_length=1000)] = None,
     severity: Annotated[
@@ -149,6 +149,19 @@ def task_risk_samples(
             severity=severity,
             decision=decision,
         )
+    )
+
+
+@router.get("/tasks/{task_id}/risk-sample-ids", response_model=list[str])
+def task_risk_sample_ids(
+    task_id: str, request: Request,
+    code: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
+    folder: Annotated[str | None, Query(min_length=1, max_length=1000)] = None,
+    severity: Literal["info", "low", "medium", "high", "fatal"] | None = None,
+    decision: Literal["all", "pending_review", "approved_keep", "approved_exclude"] = "all",
+) -> list[str]:
+    return _service(request).risk_sample_ids(
+        task_id, code=code, folder=folder, severity=severity, decision=decision,
     )
 
 

@@ -504,6 +504,75 @@ test('creates a task with source annotation retention disabled', async ({ page }
   })
 })
 
+test('risk bulk selection spans pages and submits more than 5000 in bounded batches', async ({ page }, testInfo) => {
+  await page.addInitScript(() => window.localStorage.setItem('dataset-audit-selected-task-v2', 'task-1'))
+  const api = await installApiMock(page)
+  const ids = Array.from({ length: 6001 }, (_, index) => `sample-${index + 1}`)
+  const selectionQueries: string[] = []
+  const limits: string[] = []
+  await page.route('**/api/tasks/task-1/overview*', (route) => route.fulfill({ json: {
+    ...overview, evidence_codes: [{ name: 'watermark_probability', count: ids.length }],
+  } }))
+  await page.route('**/api/tasks/task-1/risk-sample-ids?*', (route) => {
+    selectionQueries.push(route.request().url())
+    return route.fulfill({ json: ids })
+  })
+  await page.route('**/api/tasks/task-1/risk-samples?*', (route) => {
+    limits.push(new URL(route.request().url()).searchParams.get('limit') ?? '')
+    return route.fulfill({ json: { total: ids.length, offset: 0, limit: Number(limits.at(-1)), items: [{
+      sample_id: 'sample-1', relative_path: 'sample.png', artist_scope: '__root__',
+      evidence_codes: ['watermark_probability'], evidence_count: 1, highest_severity: 'medium', manually_excluded: false,
+    }] } })
+  })
+  await page.goto('/#risks')
+  await expect(page.getByLabel('每页数量')).toHaveValue('200')
+  await page.getByLabel('每页数量').selectOption('500')
+  await expect.poll(() => limits.at(-1)).toBe('500')
+  await page.getByLabel('证据类型', { exact: true }).selectOption('watermark_probability')
+  await page.getByRole('button', { name: /全选当前筛选结果/ }).click()
+  await expect(page.getByText('已选 6,001（跨页）', { exact: true })).toBeVisible()
+  expect(new URL(selectionQueries[0]).searchParams.get('code')).toBe('watermark_probability')
+  expect(api.curatedDecisionPayloads).toEqual([])
+  await page.screenshot({ path: testInfo.outputPath('risk-bulk-selection.png'), fullPage: true })
+  await page.getByRole('button', { name: '排除', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('6,001')
+  expect(api.curatedDecisionPayloads).toEqual([])
+  await page.getByRole('button', { name: '批准排除', exact: true }).click()
+  await expect.poll(() => api.curatedDecisionPayloads.length).toBe(13)
+  const batches = api.curatedDecisionPayloads as { sample_ids: string[]; decision: string }[]
+  expect(batches.flatMap((batch) => batch.sample_ids)).toEqual(ids)
+  expect(batches.every((batch) => batch.sample_ids.length <= 500 && batch.decision === 'approved_exclude')).toBe(true)
+  await expect(page.getByText('已选 0', { exact: true })).toBeVisible()
+})
+
+test('risk bulk failure retains only unfinished selections and filter changes clear them', async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('dataset-audit-selected-task-v2', 'task-1'))
+  await installApiMock(page)
+  const ids = Array.from({ length: 1201 }, (_, index) => `sample-${index + 1}`)
+  const posted: string[][] = []
+  await page.route('**/api/tasks/task-1/risk-sample-ids?*', (route) => route.fulfill({ json: ids }))
+  await page.route('**/api/tasks/task-1/reviews/curated/decisions', (route) => {
+    const payload = route.request().postDataJSON()
+    posted.push(payload.sample_ids)
+    if (posted.length === 2) return route.fulfill({ status: 503, json: { detail: '模拟中途失败' } })
+    return route.fulfill({ json: { changed: payload.sample_ids.length, selected: payload.sample_ids.length, decision: payload.decision } })
+  })
+  await page.goto('/#risks')
+  await page.getByRole('button', { name: /全选当前筛选结果/ }).click()
+  await expect(page.getByText('已选 1,201（跨页）', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '排除', exact: true }).click()
+  await page.getByRole('button', { name: '批准排除', exact: true }).click()
+  await expect(page.getByText('已选 701', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '排除', exact: true }).click()
+  await page.getByRole('button', { name: '批准排除', exact: true }).click()
+  await expect(page.getByText('已选 0', { exact: true })).toBeVisible()
+  expect(posted.slice(2).flat()).toEqual(ids.slice(500))
+  await page.getByRole('button', { name: /全选当前筛选结果/ }).click()
+  await expect(page.getByText('已选 1,201（跨页）', { exact: true })).toBeVisible()
+  await page.getByLabel('风险级别', { exact: true }).selectOption('high')
+  await expect(page.getByText('已选 0', { exact: true })).toBeVisible()
+})
+
 test('submits an approved exclusion for the selected risk sample', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem('dataset-audit-selected-task-v2', 'task-1')

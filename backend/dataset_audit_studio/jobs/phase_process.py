@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import multiprocessing
 import queue
+import sqlite3
 import time
 from collections.abc import Callable
 from contextlib import suppress
+from datetime import UTC
 from pathlib import Path
 from typing import Any
+
+from sqlalchemy.exc import OperationalError
 
 from dataset_audit_studio.database.enums import TaskStatus
 from dataset_audit_studio.database.session import Database
@@ -20,6 +24,27 @@ PhaseEntrypoint = Callable[[str, WorkerToken, Any, str, Any], None]
 
 class PhaseProcessError(RuntimeError):
     pass
+
+
+def _heartbeat_during_child_write(tasks: TaskService, token: WorkerToken) -> None:
+    """A live child's atomic checkpoint may temporarily occupy SQLite's writer."""
+    try:
+        tasks.heartbeat(token, lease_seconds=300)
+    except OperationalError as error:
+        code = getattr(error.orig, "sqlite_errorcode", None)
+        if code is None or code & 0xFF not in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}:
+            raise
+        current = tasks.get_task(token.task_id)
+        expires = current.lease_expires_at
+        if (
+            current.lease_owner != token.owner
+            or current.execution_epoch != token.execution_epoch
+            or expires is None
+            or expires.replace(tzinfo=UTC) <= tasks.clock().astimezone(UTC)
+        ):
+            raise
+        # Retry on the next heartbeat interval. Do not kill a healthy child just
+        # because its checkpoint transaction outlasted SQLite's busy timeout.
 
 
 def run_isolated_phase_subprocess(
@@ -91,7 +116,7 @@ def run_isolated_phase_subprocess(
                 break
             if time.monotonic() - last_heartbeat >= 30.0:
                 try:
-                    tasks.heartbeat(token, lease_seconds=300)
+                    _heartbeat_during_child_write(tasks, token)
                 except StaleWorkerToken:
                     process.terminate()
                     forced_stop = True

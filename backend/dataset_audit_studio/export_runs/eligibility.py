@@ -273,18 +273,20 @@ class EligibilityResolver:
         result = {code: {} for code in codes}
         if not sample_ids or not codes:
             return result
-        rows = session.scalars(
-            select(Evidence)
-            .where(
-                Evidence.task_id == task_id,
-                Evidence.sample_id.in_(sample_ids),
-                Evidence.code.in_(codes),
-            )
-            .order_by(Evidence.code, Evidence.sample_id, Evidence.id)
-        ).all()
         grouped: dict[str, dict[str, list[Evidence]]] = defaultdict(lambda: defaultdict(list))
-        for row in rows:
-            grouped[row.code][row.sample_id].append(row)
+        # Bound SQLite parameters independently of the dataset size.
+        for offset in range(0, len(sample_ids), 500):
+            rows = session.scalars(
+                select(Evidence)
+                .where(
+                    Evidence.task_id == task_id,
+                    Evidence.sample_id.in_(sample_ids[offset : offset + 500]),
+                    Evidence.code.in_(codes),
+                )
+                .order_by(Evidence.code, Evidence.sample_id, Evidence.id)
+            ).all()
+            for row in rows:
+                grouped[row.code][row.sample_id].append(row)
         for code, by_sample in grouped.items():
             result[code] = {sample_id: tuple(items) for sample_id, items in by_sample.items()}
         return result

@@ -614,16 +614,25 @@ class TaskService:
             session.flush()
             return self._task_view(session, task)
 
-    def heartbeat(self, token: WorkerToken, *, lease_seconds: int = 60) -> TaskView:
+    def heartbeat(
+        self,
+        token: WorkerToken,
+        *,
+        lease_seconds: int = 60,
+        session: Session | None = None,
+    ) -> TaskView:
+        """Renew ownership, optionally inside the caller's atomic write transaction."""
         if lease_seconds < 5:
             raise ValueError("Worker lease must be at least 5 seconds")
-        with self.database.write_session() as session:
-            now = self.clock()
-            task, lease = self._require_worker(session, token, now)
-            lease.heartbeat_at = now
-            lease.expires_at = now + timedelta(seconds=lease_seconds)
-            session.flush()
-            return self._task_view(session, task)
+        if session is None:
+            with self.database.write_session() as write_session:
+                return self.heartbeat(token, lease_seconds=lease_seconds, session=write_session)
+        now = self.clock()
+        task, lease = self._require_worker(session, token, now)
+        lease.heartbeat_at = now
+        lease.expires_at = now + timedelta(seconds=lease_seconds)
+        session.flush()
+        return self._task_view(session, task)
 
     def recover_worker_after_process_stop(
         self,
@@ -825,6 +834,12 @@ class TaskService:
                 )
 
             session.flush()
+            if control_state == "continue":
+                # The writer lock fenced this execution throughout the batch.
+                # Base the next lease on commit time, not the start of a long write.
+                lease.heartbeat_at = self.clock()
+                lease.expires_at = lease.heartbeat_at + timedelta(seconds=max(lease_seconds, 5))
+                session.flush()
             return BatchCommitResult(
                 task=self._task_view(session, task),
                 checkpoint=self._checkpoint_view(checkpoint),

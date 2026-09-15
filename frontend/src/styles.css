@@ -1846,6 +1846,24 @@ dd,
   font-size: 11px;
 }
 
+.risk-selection-bar {
+  flex-wrap: wrap;
+}
+
+.risk-toolbar {
+  flex-wrap: wrap;
+}
+
+.risk-toolbar .data-page-controls {
+  flex: 1 1 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.risk-toolbar select[aria-label="每页数量"] {
+  width: 104px;
+}
+
 .selection-bar > strong {
   margin-right: auto;
   font-size: 11px;

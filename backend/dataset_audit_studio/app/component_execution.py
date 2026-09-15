@@ -183,7 +183,7 @@ def build_component_execution_catalog(
     tasks = dependencies.tasks
     project_root = dependencies.project_root.resolve(strict=False)
     scanner = DatasetScanner(tasks, project_root=project_root)
-    duplicate_evidence = DuplicateEvidenceProducer(dependencies.database)
+    duplicate_evidence = DuplicateEvidenceProducer(dependencies.database, tasks=tasks)
 
     scoring = ModularScoringCoordinator(
         dependencies.database,
@@ -267,7 +267,9 @@ def build_component_execution_catalog(
         return scanner.run_scanning(token)
 
     def technical_metrics_component(_request: ComponentRunRequest, token: WorkerToken):
-        duplicate_evidence.produce(token.task_id, tasks.get_task(token.task_id).config_hash)
+        duplicate_evidence.produce(
+            token.task_id, tasks.get_task(token.task_id).config_hash, token=token
+        )
         return scanner.finalize_precomputed_cpu_metrics(token)
 
     def review_decision_component(_request: ComponentRunRequest, _token: WorkerToken):
