@@ -39,7 +39,7 @@ const SCHEMA_FIELD_HELP: Record<string, string> = {
   max_iterations: '风格离群检测的最大迭代次数。',
   outlier_sigma: '与风格中心偏离超过该标准差倍数的样本会被标记为离群。',
   minimum_style_score: '风格一致性得分低于该值的样本会被标记为风险。',
-  lsnet_weight: 'LSNet 画师特征在综合风格分中的权重。',
+  lsnet_weight: '画师风格主特征（Kaloscope v3）在综合风格分中的权重。',
   gram_weight: '纹理 Gram 特征在综合风格分中的权重。',
   dino_weight: 'DINO 语义特征在综合风格分中的权重。',
   gram_average_weight: '平均纹理距离在风格判定中的权重。',

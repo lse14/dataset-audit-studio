@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "registry_version": "2026-08-10.1",
+  "registry_version": "2026-10-29.1",
   "evidence_sources": [
     "https://huggingface.co/api/models/lse14/lse14-scorer/revision/655377cb813d35291a2010031f724e778b7d80dd?blobs=true",
     "https://huggingface.co/api/models/RedRocket/Hydra/revision/a7a4606cf07b742ec402c60fb641db898eaeeb2e?blobs=true",
@@ -12,6 +12,7 @@
     "https://huggingface.co/api/models/PaddlePaddle/PP-OCRv5_server_rec_safetensors/revision/542979d7cc3791732bb12af35313a6840952d79f?blobs=true",
     "https://api.github.com/repos/WisconsinAIVision/UniversalFakeDetect/commits/76a0e3e60a8a06458707a625d269ba815a2e5919",
     "https://huggingface.co/api/models/heathcliff01/Kaloscope2.0/revision/8d93704a0c260c23187f30f591c9e29c79807d44?blobs=true",
+    "https://huggingface.co/api/models/heathcliff01/Kaloscope3.0-preview/revision/5e4bfa229619b7c459ec126283827373df9de564?blobs=true",
     "https://github.com/spawner1145/comfyui-lsnet/commit/416d945e65b81ced93f1e762349d790ca92106b1",
     "https://huggingface.co/api/models/OwensLab/commfor-model-384/revision/6076002bf0d9dd37537f965ee2f06f826c333b61?blobs=true"
   ],
@@ -295,6 +296,31 @@
         }
       ],
       "loader": "lsnet_kaloscope_v2_features_v1",
+      "dependencies": [],
+      "replaceable": false,
+      "replacement_schema": null
+    },
+    {
+      "id": "kaloscope_v3_artist",
+      "display_name": "Kaloscope v3 DINOv3 ViT-B/16 Artist Features",
+      "purpose": "artist_style_feature",
+      "source": {
+        "kind": "huggingface",
+        "repository": "heathcliff01/Kaloscope3.0-preview",
+        "revision": "5e4bfa229619b7c459ec126283827373df9de564",
+        "homepage": "https://huggingface.co/heathcliff01/Kaloscope3.0-preview",
+        "license": "dinov3",
+        "remote_code_allowed": false
+      },
+      "files": [
+        {
+          "path": "v1-artist-classifier/model.safetensors",
+          "size": 625131364,
+          "sha256": "3e6a971eecc8983047a6e27af8b954368b9ec4fd8bd493f958875210845ef0a1",
+          "format": "safetensors"
+        }
+      ],
+      "loader": "kaloscope_v3_dinov3_vitb16_v1",
       "dependencies": [],
       "replaceable": false,
       "replacement_schema": null

@@ -20,7 +20,7 @@ MANIFEST = ComponentManifest(
         CapabilityRequirement("sample.image.v1"),
     ),
     produces=(CapabilityDeclaration("score.artist_style.v2"),),
-    model_ids=("lsnet_kaloscope_v2", "vgg19_imagenet1k_v1", "dinov2_large"),
+    model_ids=("kaloscope_v3_artist", "vgg19_imagenet1k_v1", "dinov2_large"),
     execution="gpu_process",
 )
 

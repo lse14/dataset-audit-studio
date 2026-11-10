@@ -55,7 +55,7 @@ def _style_assets(tmp_path: Path) -> RuntimeAssets:
     return RuntimeAssets(
         models_root=str(tmp_path),
         models=(
-            _asset(tmp_path, "lsnet_kaloscope_v2", "448-90.13/best_checkpoint.pth"),
+            _asset(tmp_path, "kaloscope_v3_artist", "v1-artist-classifier/model.safetensors"),
             _asset(tmp_path, "vgg19_imagenet1k_v1", "vgg19-dcbb9e9d.pth"),
             _asset(tmp_path, "dinov2_large", "model.safetensors"),
         ),
@@ -225,7 +225,7 @@ def test_style_service_groups_artists_persists_review_and_reuses_scope_cache(
     with database.read_session() as session:
         assert session.scalar(
             select(func.count()).select_from(ModelResult).where(
-                ModelResult.model_id == "artist_style_lsnet_v2"
+                ModelResult.model_id == "artist_style_kaloscope_v3"
             )
         ) == 11
         evidence = session.scalars(

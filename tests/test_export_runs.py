@@ -11,6 +11,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+from dataset_audit_studio.api.schemas import ExportRunResponse
 from dataset_audit_studio.app.component_task_config import ComponentTaskConfigMaterializer
 from dataset_audit_studio.app.profile_materialization import materialize_profile
 from dataset_audit_studio.components.artist_style.assets import (
@@ -167,6 +168,7 @@ def _export_run_service():
                     sample_seen_mode=kwargs.get("sample_seen_mode", "off"),
                     sample_seen_target=kwargs.get("sample_seen_target"),
                     image_format=kwargs.get("image_format", "original"),
+                    export_excluded=kwargs.get("export_excluded", False),
                 )
                 kwargs["preview_digest"] = preview.preview_digest
             return self._service.create(task_id, **kwargs)
@@ -329,6 +331,15 @@ def test_r12_preview_normalizes_all_optional_eligibility_settings_and_uses_v3_sn
     assert run.settings["domain_minimum"] == 0.5
     assert run.settings["exclude_exact_visual_duplicates"] is True
     assert run.settings["style_outlier_mode"] == "strong"
+    # The same three values must be promoted to the run view, because the export
+    # history cards read them off the run rather than digging into settings.
+    assert run.domain_minimum == 0.5
+    assert run.exclude_exact_visual_duplicates is True
+    assert run.style_outlier_mode == "strong"
+    response = ExportRunResponse.from_view(service.get(run.id))
+    assert response.domain_minimum == 0.5
+    assert response.exclude_exact_visual_duplicates is True
+    assert response.style_outlier_mode == "strong"
     with database.read_session() as session:
         persisted = session.get(models.ExportRun, run.id)
         assert persisted is not None
@@ -2746,3 +2757,262 @@ def test_export_run_resume_is_idempotent_when_staging_ahead_of_checkpoint(
     assert completed.status == "completed", (completed.error_code, completed.error_message)
     assert (output / "1_source" / "sample.png").read_bytes() == b"export-run-source"
     assert (output / "1_source" / "sample.txt").read_text(encoding="utf-8") == "resume caption"
+
+
+@pytest.mark.parametrize("export_excluded", (False, True))
+def test_optional_excluded_export_is_flat_and_keeps_every_original(
+    export_excluded, database, task_service, tmp_path
+) -> None:
+    task = _completed_profile_task(database, task_service, tmp_path)
+    source = Path(task.source_root)
+    _add_sample_at(database, task, source, "keep-second", "keep.png")
+    rejected = {
+        "low-a": "alpha/nested/shared.png",
+        "manual-b": "beta/SHARED.png",
+        "low-c": "beta/shared_2.png",
+        "small-folder": "tiny/nested/only.webp",
+    }
+    for sample_id, relative in rejected.items():
+        _add_sample_at(database, task, source, sample_id, relative)
+        (source / relative).with_suffix(".txt").write_text("excluded caption", encoding="utf-8")
+    # Two distinct samples have identical bytes; flattening must preserve both.
+    identical = source / rejected["manual-b"]
+    identical.write_bytes((source / rejected["low-a"]).read_bytes())
+    with database.write_session() as session:
+        for sample_id in ("low-a", "low-c"):
+            session.get(Sample, sample_id).display_width = 1
+        row = session.get(Sample, "manual-b")
+        stat = identical.stat()
+        row.source_size = stat.st_size
+        row.source_mtime_ns = stat.st_mtime_ns
+        row.source_sha256 = hashlib.sha256(identical.read_bytes()).hexdigest()
+        session.add(ReviewDecision(
+            task_id=task.id,
+            sample_id="manual-b",
+            scope_type="sample",
+            scope_id="manual-b",
+            category="curated:risk",
+            decision="approved_exclude",
+            source="human",
+            context_json={},
+            is_active=True,
+        ))
+    output = tmp_path / "flat-exclusions"
+    output.mkdir()
+    service = _export_run_service()(database)
+    settings = dict(
+        output_root=str(output), minimum_resolution=512,
+        minimum_folder_images=2, export_excluded=export_excluded,
+    )
+    preview = service.preview(task.id, **settings)
+    assert preview.included_count == 2
+    assert preview.exclusion_counts["resolution_below_minimum"] == 2
+    assert preview.exclusion_counts["manual_exclude"] == 1
+    assert preview.exclusion_counts["folder_below_minimum"] == 1
+    assert preview.excluded_image_count == (4 if export_excluded else 0)
+    run = service.create(task.id, preview_digest=preview.preview_digest, **settings)
+    assert run.settings["export_excluded"] is export_excluded
+    snapshot_plan = ExportRunPlanner(database).build(run.id)
+    # Later review changes must not change the already frozen copy plan.
+    with database.write_session() as session:
+        decision = session.scalar(select(ReviewDecision).where(ReviewDecision.task_id == task.id))
+        decision.is_active = False
+    assert ExportRunPlanner(database).build(run.id).plan == snapshot_plan.plan
+    claimed = task_service.claim_next(owner="flat-exclusions", lease_seconds=60)
+    completed = _export_run_executor()(database).run(claimed.token)
+    assert completed.status == "completed", completed.error_message
+    assert sorted(path.name for path in (output / "1_source").iterdir()) == [
+        "keep.png", "sample.png",
+    ]
+    if export_excluded:
+        exported = list((output / "_excluded").iterdir())
+        assert len(exported) == 4
+        assert all(path.is_file() for path in exported)
+        assert len({path.name.casefold() for path in exported}) == 4
+        assert sorted(path.read_bytes() for path in exported) == sorted(
+            (source / relative).read_bytes() for relative in rejected.values()
+        )
+        manifest = json.loads((output / "export-run-manifest.json").read_text())
+        assert manifest["summary"]["excluded_image_count"] == 4
+        assert sum(item["kind"] == "excluded_image" for item in manifest["files"]) == 4
+    else:
+        assert not (output / "_excluded").exists()
+    assert all((source / relative).exists() for relative in rejected.values())
+
+
+def test_excluded_export_preserves_original_while_training_images_are_converted(
+    database, task_service, tmp_path
+) -> None:
+    task = _completed_profile_task(database, task_service, tmp_path, image_bytes=_png_rgba_bytes())
+    source = Path(task.source_root)
+    _add_sample_at(database, task, source, "excluded-original", "nested/original.gif")
+    with database.write_session() as session:
+        row = session.get(Sample, "excluded-original")
+        row.display_width = 1
+        row.export_requires_render = True
+        row.extracted_frame_path = "unused-rendered-frame.png"
+    output = tmp_path / "converted-and-original"
+    output.mkdir()
+    service = _export_run_service()(database)
+    run = service.create(
+        task.id, output_root=str(output), minimum_resolution=512,
+        image_format="webp", export_excluded=True,
+    )
+    claimed = task_service.claim_next(owner="excluded-original", lease_seconds=60)
+    completed = _export_run_executor()(database).run(claimed.token)
+    assert completed.status == "completed", completed.error_message
+    assert (output / "_excluded/original.gif").read_bytes() == (
+        source / "nested/original.gif"
+    ).read_bytes()
+    with Image.open(output / "1_source/sample.webp") as image:
+        assert image.format == "WEBP"
+    assert ExportRunPlanner(database).build(run.id).summary["included_count"] == 1
+
+
+def test_excluded_export_allows_only_rejected_images(database, task_service, tmp_path) -> None:
+    task = _completed_profile_task(database, task_service, tmp_path)
+    output = tmp_path / "only-excluded"
+    output.mkdir()
+    with database.write_session() as session:
+        session.get(Sample, "export-run-sample").display_width = 1
+    service = _export_run_service()(database)
+    preview = service.preview(
+        task.id, output_root=str(output), minimum_resolution=512, export_excluded=True,
+    )
+    assert preview.included_count == 0
+    assert preview.excluded_image_count == 1
+    service.create(
+        task.id, output_root=str(output), minimum_resolution=512, export_excluded=True,
+        preview_digest=preview.preview_digest,
+    )
+    claimed = task_service.claim_next(owner="only-excluded", lease_seconds=60)
+    completed = _export_run_executor()(database).run(claimed.token)
+    assert completed.status == "completed", completed.error_message
+    assert (output / "_excluded/sample.png").read_bytes() == b"export-run-source"
+    assert not (output / "1_source").exists()
+
+
+def test_excluded_export_toggle_invalidates_preview(database, task_service, tmp_path) -> None:
+    task = _completed_profile_task(database, task_service, tmp_path)
+    output = tmp_path / "excluded-toggle"
+    output.mkdir()
+    service = _export_run_service()(database)
+    preview = service.preview(task.id, output_root=str(output), minimum_resolution=512)
+    assert preview.settings["export_excluded"] is False
+    assert preview.excluded_image_count == 0
+    with pytest.raises(ExportRunError) as error:
+        service.create(
+            task.id, output_root=str(output), minimum_resolution=512, export_excluded=True,
+            preview_digest=preview.preview_digest,
+        )
+    assert error.value.code == "export_preview_stale"
+
+
+def test_legacy_snapshot_without_excluded_setting_still_executes(
+    database, task_service, tmp_path
+) -> None:
+    task = _completed_profile_task(database, task_service, tmp_path)
+    output = tmp_path / "legacy-excluded-setting"
+    output.mkdir()
+    run = _export_run_service()(database).create(
+        task.id, output_root=str(output), minimum_resolution=512,
+    )
+    with database.write_session() as session:
+        row = session.get(models.ExportRun, run.id)
+        settings = copy.deepcopy(row.settings_json)
+        settings.pop("export_excluded")
+        row.settings_json = settings
+        snapshot = copy.deepcopy(row.input_snapshot_json)
+        snapshot["settings"].pop("export_excluded")
+        snapshot["summary"]["settings"].pop("export_excluded")
+        snapshot["summary"].pop("excluded_image_count")
+        row.input_snapshot_json = snapshot
+    claimed = task_service.claim_next(owner="legacy-excluded-setting", lease_seconds=60)
+    completed = _export_run_executor()(database).run(claimed.token)
+    assert completed.status == "completed", completed.error_message
+    assert (output / "1_source/sample.png").read_bytes() == b"export-run-source"
+    with database.read_session() as session:
+        row = session.get(models.ExportRun, run.id)
+        assert "export_excluded" not in row.settings_json
+        assert "export_excluded" not in row.input_snapshot_json["settings"]
+
+
+def test_excluded_export_detects_original_changes(database, task_service, tmp_path) -> None:
+    task = _completed_profile_task(database, task_service, tmp_path)
+    output = tmp_path / "changed-excluded"
+    output.mkdir()
+    with database.write_session() as session:
+        session.get(Sample, "export-run-sample").display_width = 1
+    Path(task.source_root, "sample.png").write_bytes(b"modified-original")
+    with pytest.raises(ExportRunError) as error:
+        _export_run_service()(database).preview(
+            task.id, output_root=str(output), minimum_resolution=512, export_excluded=True,
+        )
+    assert error.value.code == "export_source_hash_mismatch"
+
+
+def test_excluded_export_rejects_training_folder_collision(
+    database, task_service, tmp_path
+) -> None:
+    task = _completed_profile_task(database, task_service, tmp_path)
+    source = Path(task.source_root)
+    _add_sample_at(database, task, source, "reserved-folder", "_excluded/keep.png")
+    with database.write_session() as session:
+        session.get(Sample, "export-run-sample").display_width = 1
+    output = tmp_path / "excluded-collision"
+    output.mkdir()
+    with pytest.raises(ExportRunError) as error:
+        _export_run_service()(database).preview(
+            task.id, output_root=str(output), minimum_resolution=512,
+            add_repeat_prefix=False, export_excluded=True,
+        )
+    assert error.value.code == "export_collision"
+
+
+@pytest.mark.parametrize("first_export", (False, True))
+def test_excluded_export_api_carries_setting_and_rejects_non_booleans(
+    first_export, tmp_path
+) -> None:
+    from dataset_audit_studio.main import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app(
+        database_path=tmp_path / "api.db", project_root=tmp_path, enforce_runtime=False,
+    )
+    with TestClient(app) as client:
+        tasks = TaskService(app.state.database)
+        task = _completed_profile_task(app.state.database, tasks, tmp_path)
+        if first_export:
+            with app.state.database.write_session() as session:
+                session.get(Task, task.id).status = TaskStatus.EVIDENCE_REVIEW.value
+        output = tmp_path / "api-excluded"
+        output.mkdir()
+        payload = dict(output_root=str(output), minimum_resolution=512, export_excluded=True)
+        prefix = f"/api/tasks/{task.id}"
+        endpoint = "review-gate/release" if first_export else "export-runs"
+        if first_export:
+            payload.update(expected_gate="evidence_review", expected_version=task.row_version)
+        for invalid in ("yes", 1, None, [], {}):
+            preview_invalid = client.post(
+                f"{prefix}/export-runs/preview",
+                json=dict(output_root=str(output), minimum_resolution=512, export_excluded=invalid),
+            )
+            create_invalid = client.post(
+                f"{prefix}/{endpoint}", json={**payload, "export_excluded": invalid},
+            )
+            for response in (preview_invalid, create_invalid):
+                assert response.status_code == 422
+                assert response.json()["code"] == "export_excluded_invalid"
+        preview = client.post(
+            f"{prefix}/export-runs/preview",
+            json=dict(output_root=str(output), minimum_resolution=512, export_excluded=True),
+        )
+        assert preview.status_code == 200
+        assert preview.json()["settings"]["export_excluded"] is True
+        assert preview.json()["excluded_image_count"] == 0
+        response = client.post(
+            f"{prefix}/{endpoint}",
+            json={**payload, "preview_digest": preview.json()["preview_digest"]},
+        )
+        assert response.status_code in (200, 202), response.text
+        assert response.json()["settings"]["export_excluded"] is True

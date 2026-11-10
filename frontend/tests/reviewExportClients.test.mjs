@@ -384,6 +384,7 @@ test('export-run client uses the only two backend routes with exact payload and 
       sample_seen_mode: 'manual',
       sample_seen_target: 12,
       image_format: 'webp',
+      export_excluded: true,
       preview_digest: 'a'.repeat(64),
     }), created)
     assert.strictEqual(await listExportRuns('task-1', { offset: 20, limit: 25 }), listed)
@@ -392,7 +393,7 @@ test('export-run client uses the only two backend routes with exact payload and 
       '/api/tasks/task-1/export-runs?offset=20&limit=25',
     ])
     assert.equal(calls[0].options.method, 'POST')
-    assert.equal(calls[0].options.body, '{"output_root":"E:/exports/run-1","minimum_resolution":768,"domain_minimum":0.6,"exclude_exact_visual_duplicates":true,"style_outlier_mode":"all","aesthetic_minimum":null,"minimum_folder_images":3,"add_repeat_prefix":true,"sample_seen_mode":"manual","sample_seen_target":12,"image_format":"webp","preview_digest":"' + 'a'.repeat(64) + '"}')
+    assert.equal(calls[0].options.body, '{"output_root":"E:/exports/run-1","minimum_resolution":768,"domain_minimum":0.6,"exclude_exact_visual_duplicates":true,"style_outlier_mode":"all","aesthetic_minimum":null,"minimum_folder_images":3,"add_repeat_prefix":true,"sample_seen_mode":"manual","sample_seen_target":12,"image_format":"webp","export_excluded":true,"preview_digest":"' + 'a'.repeat(64) + '"}')
     assert.equal(calls[1].options.method, undefined)
   })
 })
@@ -413,10 +414,11 @@ test('export-run client previews the exact single-dataset settings', async () =>
       sample_seen_mode: 'auto',
       sample_seen_target: null,
       image_format: 'jpeg',
+      export_excluded: true,
     }), payload)
     assert.equal(calls[0].path, '/api/tasks/task-1/export-runs/preview')
     assert.equal(calls[0].options.method, 'POST')
-    assert.equal(calls[0].options.body, '{"output_root":"E:/exports/run-1","minimum_resolution":1024,"domain_minimum":0.7,"exclude_exact_visual_duplicates":true,"style_outlier_mode":"strong","aesthetic_minimum":3.5,"minimum_folder_images":2,"add_repeat_prefix":false,"sample_seen_mode":"auto","sample_seen_target":null,"image_format":"jpeg"}')
+    assert.equal(calls[0].options.body, '{"output_root":"E:/exports/run-1","minimum_resolution":1024,"domain_minimum":0.7,"exclude_exact_visual_duplicates":true,"style_outlier_mode":"strong","aesthetic_minimum":3.5,"minimum_folder_images":2,"add_repeat_prefix":false,"sample_seen_mode":"auto","sample_seen_target":null,"image_format":"jpeg","export_excluded":true}')
   })
 })
 
@@ -436,10 +438,11 @@ test('first copy release uses the complete preview-bound payload', async () => {
       sample_seen_mode: 'off',
       sample_seen_target: null,
       image_format: 'png',
+      export_excluded: true,
       preview_digest: 'c'.repeat(64),
     }), payload)
     assert.equal(calls[0].path, '/api/tasks/task-1/review-gate/release')
-    assert.equal(calls[0].options.body, '{"expected_version":9,"expected_gate":"evidence_review","output_root":"E:/exports/first","minimum_resolution":512,"domain_minimum":null,"exclude_exact_visual_duplicates":false,"style_outlier_mode":"off","aesthetic_minimum":null,"minimum_folder_images":1,"add_repeat_prefix":true,"sample_seen_mode":"off","sample_seen_target":null,"image_format":"png","preview_digest":"' + 'c'.repeat(64) + '"}')
+    assert.equal(calls[0].options.body, '{"expected_version":9,"expected_gate":"evidence_review","output_root":"E:/exports/first","minimum_resolution":512,"domain_minimum":null,"exclude_exact_visual_duplicates":false,"style_outlier_mode":"off","aesthetic_minimum":null,"minimum_folder_images":1,"add_repeat_prefix":true,"sample_seen_mode":"off","sample_seen_target":null,"image_format":"png","export_excluded":true,"preview_digest":"' + 'c'.repeat(64) + '"}')
   })
 })
 
@@ -457,6 +460,7 @@ test('first and repeat copy exports send identical eligibility settings', async 
     sample_seen_mode: 'off',
     sample_seen_target: null,
     image_format: 'webp',
+    export_excluded: true,
     preview_digest: 'd'.repeat(64),
   }
   await withFetch([payload, payload], async (calls) => {

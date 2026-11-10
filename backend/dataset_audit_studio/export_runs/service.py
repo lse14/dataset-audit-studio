@@ -51,6 +51,7 @@ class ExportRunService:
         sample_seen_mode: str = "off",
         sample_seen_target: int | None = None,
         image_format: str = "original",
+        export_excluded: bool = False,
         preview_digest: str | None = None,
     ) -> ExportRunView:
         return self._create(
@@ -66,6 +67,7 @@ class ExportRunService:
             sample_seen_mode=sample_seen_mode,
             sample_seen_target=sample_seen_target,
             image_format=image_format,
+            export_excluded=export_excluded,
             preview_digest=preview_digest,
             expected_status=TaskStatus.COMPLETED,
             expected_version=None,
@@ -87,6 +89,7 @@ class ExportRunService:
         sample_seen_mode: str = "off",
         sample_seen_target: int | None = None,
         image_format: str = "original",
+        export_excluded: bool = False,
         preview_digest: str | None = None,
         expected_version: int | None = None,
     ) -> ExportRunView:
@@ -103,6 +106,7 @@ class ExportRunService:
             sample_seen_mode=sample_seen_mode,
             sample_seen_target=sample_seen_target,
             image_format=image_format,
+            export_excluded=export_excluded,
             preview_digest=preview_digest,
             expected_status=TaskStatus.EVIDENCE_REVIEW,
             expected_version=expected_version,
@@ -124,6 +128,7 @@ class ExportRunService:
         sample_seen_mode: str,
         sample_seen_target: int | None,
         image_format: str,
+        export_excluded: bool,
         preview_digest: str | None,
         expected_status: TaskStatus,
         expected_version: int | None,
@@ -142,6 +147,7 @@ class ExportRunService:
             sample_seen_target=sample_seen_target,
         )
         normalized_image_format = self._validate_image_format(image_format)
+        self._validate_export_excluded(export_excluded)
         if not self._is_digest(preview_digest):
             raise ExportRunError("export_preview_required", "A current preview_digest is required")
         output_key = self._output_key(path)
@@ -163,6 +169,7 @@ class ExportRunService:
                 sample_seen_mode=selection["sample_seen_mode"],
                 sample_seen_target=selection["sample_seen_target"],
                 image_format=normalized_image_format,
+                export_excluded=export_excluded,
                 minimum_resolution=minimum_resolution,
                 domain_minimum=domain,
                 exclude_exact_visual_duplicates=duplicate_filter,
@@ -176,7 +183,10 @@ class ExportRunService:
                 "export_preview_stale",
                 "Export preview is stale; refresh before creating the run",
             )
-        if int(planned.summary.get("included_count", 0)) == 0:
+        if (
+            int(planned.summary.get("included_count", 0)) == 0
+            and int(planned.summary.get("excluded_image_count", 0)) == 0
+        ):
             raise ExportRunError(
                 "export_empty_output", "Export preview contains no eligible samples"
             )
@@ -253,6 +263,7 @@ class ExportRunService:
         sample_seen_mode: str = "off",
         sample_seen_target: int | None = None,
         image_format: str = "original",
+        export_excluded: bool = False,
     ) -> ExportRunPreview:
         path = self._validate_output_root(output_root)
         self._validate_resolution(minimum_resolution)
@@ -267,6 +278,7 @@ class ExportRunService:
             sample_seen_target=sample_seen_target,
         )
         normalized_image_format = self._validate_image_format(image_format)
+        self._validate_export_excluded(export_excluded)
         with self.database.read_session() as session:
             task, config = self._current_task_config(session, task_id)
             if not self._has_builtin_profile(config.config_json):
@@ -303,6 +315,7 @@ class ExportRunService:
             sample_seen_mode=selection["sample_seen_mode"],
             sample_seen_target=selection["sample_seen_target"],
             image_format=normalized_image_format,
+            export_excluded=export_excluded,
         )
         return preview
 
@@ -424,6 +437,11 @@ class ExportRunService:
         return value
 
     @staticmethod
+    def _validate_export_excluded(value: object) -> None:
+        if not isinstance(value, bool):
+            raise ExportRunError("export_excluded_invalid", "export_excluded must be boolean")
+
+    @staticmethod
     def _validate_image_format(value: object) -> ExportImageFormat:
         try:
             return normalize_image_format(value)
@@ -529,6 +547,7 @@ class ExportRunService:
         sample_seen_mode: str,
         sample_seen_target: int | None,
         image_format: ExportImageFormat,
+        export_excluded: bool,
         minimum_resolution: int,
         domain_minimum: float | None,
         exclude_exact_visual_duplicates: bool,
@@ -552,6 +571,7 @@ class ExportRunService:
             "sample_seen_mode": sample_seen_mode,
             "sample_seen_target": sample_seen_target,
             "image_format": image_format,
+            "export_excluded": export_excluded,
         }
 
     @staticmethod
@@ -643,6 +663,17 @@ class ExportRunService:
 
     @staticmethod
     def _view(run: ExportRun) -> ExportRunView:
+        settings = run.settings_json if isinstance(run.settings_json, dict) else {}
+        domain = settings.get("domain_minimum")
+        domain_minimum = (
+            float(domain)
+            if isinstance(domain, (int, float))
+            and not isinstance(domain, bool)
+            and math.isfinite(float(domain))
+            else None
+        )
+        duplicates = settings.get("exclude_exact_visual_duplicates")
+        style_mode = settings.get("style_outlier_mode")
         return ExportRunView(
             id=run.id,
             task_id=run.task_id,
@@ -653,6 +684,9 @@ class ExportRunService:
             output_key=run.output_key,
             minimum_resolution=run.minimum_resolution,
             resolutions=tuple(run.resolutions_json),
+            domain_minimum=domain_minimum,
+            exclude_exact_visual_duplicates=duplicates is True,
+            style_outlier_mode=style_mode if style_mode in {"off", "strong", "all"} else "off",
             aesthetic_minimum=run.aesthetic_minimum,
             minimum_folder_images=run.minimum_folder_images,
             add_repeat_prefix=run.add_repeat_prefix,

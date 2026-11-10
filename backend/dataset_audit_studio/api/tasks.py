@@ -144,6 +144,7 @@ def _export_run_error_response(error: ExportRunError) -> JSONResponse:
         "export_duplicate_filter_invalid": 422,
         "export_style_outlier_mode_invalid": 422,
         "export_image_format_invalid": 422,
+        "export_excluded_invalid": 422,
         "export_task_not_completed": 409,
         "export_output_not_empty": 409,
         "export_output_already_used": 409,
@@ -370,6 +371,7 @@ def create_export_run(
             else "off",
             sample_seen_target=payload.sample_seen_target,
             image_format=payload.image_format if payload.image_format is not None else "original",
+            export_excluded=payload.export_excluded,
             preview_digest=payload.preview_digest,
         )
     except ExportRunError as error:
@@ -411,6 +413,7 @@ def preview_export_run(
             else "off",
             sample_seen_target=payload.sample_seen_target,
             image_format=payload.image_format if payload.image_format is not None else "original",
+            export_excluded=payload.export_excluded,
         )
     except ExportRunError as error:
         return _export_run_error_response(error)
@@ -559,6 +562,7 @@ def release_review_gate(
                 image_format=(
                     payload.image_format if payload.image_format is not None else "original"
                 ),
+                export_excluded=payload.export_excluded,
                 preview_digest=payload.preview_digest,
                 expected_version=payload.expected_version,
             )

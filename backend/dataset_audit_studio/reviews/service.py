@@ -608,16 +608,11 @@ class ReviewService:
             )
             pixel_areas_by_sample: dict[str, int] = {}
             resolution_rows = []
+            samples_by_id = {
+                item.id: item for _group, values in resolved_groups for item, _evidence in values
+            }
             for sample_id in sample_ids:
-                sample = next(
-                    (
-                        item
-                        for _group, values in resolved_groups
-                        for item, _evidence in values
-                        if item.id == sample_id
-                    ),
-                    None,
-                )
+                sample = samples_by_id.get(sample_id)
                 if sample is None:
                     continue
                 width = sample.display_width or sample.encoded_width
@@ -719,16 +714,7 @@ class ReviewService:
         candidate_group: str | None = None,
     ) -> CuratedReviewListView:
         task = TaskService(self.database).get_task(task_id)
-        if not (
-            task.status == TaskStatus.EVIDENCE_REVIEW.value
-            or (
-                task.status == TaskStatus.PAUSED.value
-                and task.resume_state == TaskStatus.EVIDENCE_REVIEW.value
-            )
-        ):
-            raise InvalidReviewSelection(
-                "Curated candidates require the curated confirmation window"
-            )
+        self._require_curated_confirmation_window(task, action="Curated candidates")
         with self.database.read_session() as session:
             candidates = self._curated_candidate_views(
                 session,
@@ -1341,15 +1327,17 @@ class ReviewService:
             raise InvalidReviewSelection("score_min cannot exceed score_max")
 
     @staticmethod
-    def _require_curated_confirmation_window(task, *, action: str) -> None:
-        if task.status == TaskStatus.COMPLETED.value:
-            return
-        if task.status == TaskStatus.EVIDENCE_REVIEW.value:
-            return
-        if (
+    def _is_curated_confirmation_window(task) -> bool:
+        if task.status in {TaskStatus.COMPLETED.value, TaskStatus.EVIDENCE_REVIEW.value}:
+            return True
+        return (
             task.status == TaskStatus.PAUSED.value
             and task.resume_state == TaskStatus.EVIDENCE_REVIEW.value
-        ):
+        )
+
+    @classmethod
+    def _require_curated_confirmation_window(cls, task, *, action: str) -> None:
+        if cls._is_curated_confirmation_window(task):
             return
         raise InvalidReviewSelection(f"{action} require the curated confirmation window")
 

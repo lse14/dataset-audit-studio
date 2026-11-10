@@ -14,8 +14,8 @@ class StyleConfig(BaseModel):
     image_size: Literal[224] = 224
     minimum_scope_size: int = Field(default=8, ge=2, le=10_000)
     max_iterations: int = Field(default=3, ge=1, le=3)
-    outlier_sigma: float = Field(default=0.522, ge=0.5, le=5.0)
-    minimum_style_score: float = Field(default=92.07, ge=0.0, le=100.0)
+    outlier_sigma: float = Field(default=1.8, ge=0.5, le=5.0)
+    minimum_style_score: float = Field(default=30.0, ge=0.0, le=100.0)
     lsnet_weight: float = Field(default=0.892, ge=0.0, le=1.0)
     gram_weight: float = Field(default=0.0, ge=0.0, le=1.0)
     dino_weight: float = Field(default=0.108, ge=0.0, le=1.0)

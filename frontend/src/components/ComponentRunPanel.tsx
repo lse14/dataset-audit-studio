@@ -1,5 +1,6 @@
 import { Boxes, Clock3, Database, GitBranch } from 'lucide-react'
 
+import { parseApiTime } from '../apiTime'
 import type { ComponentManifest, ComponentRun, JsonValue } from '../types'
 import { EmptyState, StatusPill } from '../ui'
 
@@ -101,8 +102,8 @@ function cacheLabel(checkpoint: Record<string, JsonValue>, completed: number): s
 
 function durationLabel(run: ComponentRun): string {
   if (!run.started_at) return '-'
-  const start = new Date(run.started_at).getTime()
-  const end = run.finished_at ? new Date(run.finished_at).getTime() : Date.now()
+  const start = parseApiTime(run.started_at).getTime()
+  const end = run.finished_at ? parseApiTime(run.finished_at).getTime() : Date.now()
   const seconds = Math.max(0, Math.floor((end - start) / 1000))
   if (seconds < 60) return `${seconds}s`
   const minutes = Math.floor(seconds / 60)

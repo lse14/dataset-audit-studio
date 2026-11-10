@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import multiprocessing
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -43,6 +44,31 @@ def _large_result_entrypoint(_database_path, _token, _payload, _project_root, re
             "traceback": "",
         }
     )
+
+
+def _startup_probe_entrypoint(_database_path, _token, _payload, _project_root, _result_queue):
+    return
+
+
+def _cold_spawn_seconds() -> float:
+    """Time one spawn of this module with a trivial target.
+
+    ``spawn`` re-imports the calling module in the child, and this module pulls in torch
+    and transformers. On Windows that import is the dominant cost of the large-result
+    test (13s on a machine with on-access antivirus scanning), so the timing budget below
+    is expressed relative to it instead of as an absolute number.
+    """
+
+    context = multiprocessing.get_context("spawn")
+    process = context.Process(
+        target=_startup_probe_entrypoint,
+        args=(None, None, None, None, None),
+        name="dataset-startup-probe",
+    )
+    started = time.monotonic()
+    process.start()
+    process.join()
+    return time.monotonic() - started
 
 
 class _CompletionRaceTasks:
@@ -210,10 +236,14 @@ def test_isolated_phase_drains_large_result_before_child_exit(
             poll_seconds=0.01,
         )
 
-    # Windows spawn cold-imports the entrypoint module; this still guards the 30s join timeout.
-    assert time.monotonic() - started < 20.0
+    # The child's cold import is environment cost, not behaviour under test, so the budget
+    # is "20s of real work on top of what one spawn of this module costs here". Draining
+    # after the 30s join instead of while the child is alive would blow past it on every
+    # platform; losing the 1MB payload already fails the PhaseProcessError match above.
+    assert time.monotonic() - started < _cold_spawn_seconds() + 20.0
 
 
+@pytest.mark.requires_windows
 def test_empty_style_and_clustering_spawn_processes_reach_evidence_review(
     database: Database,
     task_service: TaskService,
@@ -318,7 +348,7 @@ def _style_assets(root: Path) -> RuntimeAssets:
     return RuntimeAssets(
         models_root=str(root),
         models=(
-            asset("lsnet_kaloscope_v2", "448-90.13/best_checkpoint.pth"),
+            asset("kaloscope_v3_artist", "v1-artist-classifier/model.safetensors"),
             asset("vgg19_imagenet1k_v1", "vgg19.pth"),
             asset("dinov2_large", "model.safetensors"),
         ),
@@ -355,7 +385,7 @@ def test_style_asset_wait_pause_resumes_without_treating_wait_as_inference(
         models,
         task_service,
         claimed.token,
-        ("lsnet_kaloscope_v2", "vgg19_imagenet1k_v1", "dinov2_large"),
+        ("kaloscope_v3_artist", "vgg19_imagenet1k_v1", "dinov2_large"),
         phase=TaskStatus.STYLE_ANALYSIS,
         poll_seconds=0,
     )

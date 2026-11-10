@@ -16,6 +16,9 @@ class ExportRunView:
     output_key: str
     minimum_resolution: int
     resolutions: tuple[int, ...]
+    domain_minimum: float | None
+    exclude_exact_visual_duplicates: bool
+    style_outlier_mode: str
     aesthetic_minimum: float | None
     minimum_folder_images: int
     add_repeat_prefix: bool
@@ -66,3 +69,4 @@ class ExportRunPreview:
     folders: tuple[dict[str, Any], ...]
     duplicate_groups: tuple[dict[str, Any], ...]
     warnings: tuple[str, ...]
+    excluded_image_count: int = 0

@@ -13,7 +13,7 @@ from torchvision.transforms import InterpolationMode
 
 from dataset_audit_studio.components.artist_style.assets import (
     DINO_MODEL_ID,
-    LSNET_MODEL_ID,
+    KALOSCOPE_MODEL_ID,
     VGG_MODEL_ID,
 )
 from dataset_audit_studio.components.artist_style.config import StyleConfig
@@ -21,7 +21,9 @@ from dataset_audit_studio.components.artist_style.contracts import (
     StyleFeatureBatch,
     StyleSample,
 )
-from dataset_audit_studio.components.artist_style.lsnet_runtime import load_lsnet_feature_model
+from dataset_audit_studio.components.artist_style.kaloscope_v3_runtime import (
+    load_kaloscope_v3_feature_model,
+)
 from dataset_audit_studio.core.model_assets import (
     RuntimeAssets,
     verify_runtime_asset_snapshot,
@@ -64,7 +66,7 @@ class TorchStyleRuntime:
         self.assets = assets
         self.device = resolve_torch_device(config.device, "float32")
         if config.lsnet_weight > 0.0:
-            self.lsnet_transform, self.lsnet = self._load_lsnet()
+            self.lsnet_transform, self.lsnet = self._load_kaloscope()
         else:
             self.lsnet_transform, self.lsnet = None, None
         self.vgg = self._load_vgg() if config.gram_weight > 0.0 else None
@@ -146,10 +148,10 @@ class TorchStyleRuntime:
         self.dino_processor = None
         release_torch_memory()
 
-    def _load_lsnet(self):
-        asset = self.assets.get(LSNET_MODEL_ID)
-        return load_lsnet_feature_model(
-            asset.file_path("448-90.13/best_checkpoint.pth"),
+    def _load_kaloscope(self):
+        asset = self.assets.get(KALOSCOPE_MODEL_ID)
+        return load_kaloscope_v3_feature_model(
+            asset.file_path("v1-artist-classifier/model.safetensors"),
             self.device,
         )
 

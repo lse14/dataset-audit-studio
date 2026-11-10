@@ -7,7 +7,7 @@ import pytest
 import torch
 from dataset_audit_studio.components.artist_style.assets import (
     DINO_MODEL_ID,
-    LSNET_MODEL_ID,
+    KALOSCOPE_MODEL_ID,
     VGG_MODEL_ID,
     requested_style_model_ids,
 )
@@ -37,11 +37,11 @@ from torchvision import models
         ),
         (
             StyleConfig(lsnet_weight=0.4, gram_weight=0.0, dino_weight=0.6),
-            (LSNET_MODEL_ID, DINO_MODEL_ID),
+            (KALOSCOPE_MODEL_ID, DINO_MODEL_ID),
         ),
         (
             StyleConfig(lsnet_weight=0.4, gram_weight=0.6, dino_weight=0.0),
-            (LSNET_MODEL_ID, VGG_MODEL_ID),
+            (KALOSCOPE_MODEL_ID, VGG_MODEL_ID),
         ),
     ),
 )
@@ -61,14 +61,14 @@ def test_style_model_requests_follow_positive_weights(
 def test_style_config_uses_tuned_default_outlier_settings() -> None:
     config = StyleConfig.from_task_config({})
     assert config.max_iterations == 3
-    assert config.outlier_sigma == 0.522
-    assert config.minimum_style_score == 92.07
+    assert config.outlier_sigma == 1.8
+    assert config.minimum_style_score == 30.0
     assert config.lsnet_weight == 0.892
     assert config.gram_weight == 0.0
     assert config.dino_weight == 0.108
     assert config.gram_average_weight == 0.8
     assert config.gram_centroid_weight == 0.2
-    assert requested_style_model_ids(config) == (LSNET_MODEL_ID, DINO_MODEL_ID)
+    assert requested_style_model_ids(config) == (KALOSCOPE_MODEL_ID, DINO_MODEL_ID)
     with pytest.raises(ValidationError, match="must sum to 1"):
         StyleConfig.from_task_config(
             {
@@ -92,8 +92,8 @@ def test_zero_lsnet_weight_skips_model_loading(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(runtime_module, "resolve_torch_device", lambda *_args: torch.device("cpu"))
     monkeypatch.setattr(
         TorchStyleRuntime,
-        "_load_lsnet",
-        lambda _self: pytest.fail("LSNet should be lazy"),
+        "_load_kaloscope",
+        lambda _self: pytest.fail("Kaloscope v3 should be lazy"),
     )
     monkeypatch.setattr(TorchStyleRuntime, "_load_vgg", lambda _self: object())
     monkeypatch.setattr(
@@ -116,7 +116,7 @@ def test_zero_lsnet_weight_skips_model_loading(monkeypatch: pytest.MonkeyPatch) 
     (
         (
             StyleConfig(lsnet_weight=0.0, gram_weight=0.8, dino_weight=0.2),
-            "lsnet",
+            "kaloscope",
         ),
         (
             StyleConfig(lsnet_weight=0.4, gram_weight=0.0, dino_weight=0.6),
@@ -137,8 +137,8 @@ def test_zero_weight_style_model_is_not_loaded(
 
     loaded: list[str] = []
 
-    def load_lsnet(_self):
-        loaded.append("lsnet")
+    def load_kaloscope(_self):
+        loaded.append("kaloscope")
         return lambda _image: torch.zeros((3, 224, 224)), SimpleNamespace()
 
     def load_vgg(_self):
@@ -151,7 +151,7 @@ def test_zero_weight_style_model_is_not_loaded(
 
     monkeypatch.setattr(runtime_module, "verify_runtime_asset_snapshot", lambda _assets: None)
     monkeypatch.setattr(runtime_module, "resolve_torch_device", lambda *_args: torch.device("cpu"))
-    monkeypatch.setattr(TorchStyleRuntime, "_load_lsnet", load_lsnet)
+    monkeypatch.setattr(TorchStyleRuntime, "_load_kaloscope", load_kaloscope)
     monkeypatch.setattr(TorchStyleRuntime, "_load_vgg", load_vgg)
     monkeypatch.setattr(TorchStyleRuntime, "_load_dino", load_dino)
 
@@ -175,7 +175,7 @@ def test_skipped_style_models_emit_neutral_feature_columns(
     monkeypatch.setattr(runtime_module, "resolve_torch_device", lambda *_args: torch.device("cpu"))
     monkeypatch.setattr(
         TorchStyleRuntime,
-        "_load_lsnet",
+        "_load_kaloscope",
         lambda _self: (lambda _image: torch.zeros((3, 224, 224)), FakeLsnet()),
     )
     monkeypatch.setattr(

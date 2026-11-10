@@ -8,6 +8,9 @@ import type { ComponentManifest, Health, Task } from '../types'
 
 type Notice = (message: string, tone?: 'success' | 'error') => void
 
+const TASK_PAGE_LIMIT = 200
+const TASK_PAGE_CAP = 50
+
 type UseAppBootstrapOptions = {
   notify: Notice
   reconcileSelectedTask: (tasks: Task[]) => void
@@ -40,6 +43,20 @@ export function useAppBootstrap({ notify, reconcileSelectedTask }: UseAppBootstr
   const reloadTasks = useCallback(async () => {
     try {
       const data = await listTasks()
+      // The endpoint caps a page at 200 tasks and the list used to stop there, which hid older
+      // tasks and let selection reconciliation clear the current one. Follow `total` to the end,
+      // with a hard page cap so a stale `total` cannot spin forever.
+      const byId = new Map(data.items.map((task) => [task.id, task] as const))
+      let fetched = data.items.length
+      for (let page = 1; page < TASK_PAGE_CAP && fetched < data.total; page += 1) {
+        const next = await listTasks(fetched, TASK_PAGE_LIMIT)
+        if (next.items.length === 0) break
+        fetched += next.items.length
+        data.total = next.total
+        // Tasks created while paging shift the offsets, so merge by ID instead of concatenating.
+        for (const task of next.items) byId.set(task.id, task)
+      }
+      data.items = [...byId.values()]
       const profileTasks = data.items.filter(isBuiltinProfileTask)
       setTasks(profileTasks)
       reconcileSelectedTask(profileTasks)

@@ -642,3 +642,30 @@ def test_media_endpoint_serves_webp_when_mime_inference_is_missing(
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/webp"
     assert response.content == webp.read_bytes()
+
+
+def test_curated_candidates_are_readable_after_the_task_completes(
+    database,
+    task_service: TaskService,
+    tmp_path: Path,
+) -> None:
+    task, _sample_ids = _seed_completed_audit_task(database, task_service, tmp_path)
+    app = create_app(
+        database_path=database.path,
+        enforce_runtime=False,
+        start_worker=False,
+        project_root=tmp_path / "project",
+    )
+
+    with TestClient(app) as client:
+        completed = client.get(f"/api/tasks/{task.id}/reviews/curated?evidence_type=risk")
+        with database.write_session() as session:
+            row = session.get(Task, task.id)
+            assert row is not None
+            row.status = TaskStatus.SCANNING.value
+        scanning = client.get(f"/api/tasks/{task.id}/reviews/curated?evidence_type=risk")
+
+    # The write path accepts completed tasks, so the read path must agree.
+    assert completed.status_code == 200
+    # Outside the confirmation window the endpoint still fails closed.
+    assert scanning.status_code == 409

@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STOP_SCRIPT = PROJECT_ROOT / "scripts" / "stop_webui.ps1"
 
@@ -87,7 +89,10 @@ function Get-Process {{
 
 . '{stop_script}'
 """,
-        encoding="utf-8",
+        # Windows PowerShell 5.1 reads a BOM-less script as ANSI, so a project path
+        # containing non-ASCII characters arrives mangled and the dot-source fails. The
+        # BOM makes the harness decode as UTF-8 on every Windows locale.
+        encoding="utf-8-sig",
     )
 
     return subprocess.run(
@@ -107,6 +112,7 @@ function Get-Process {{
 
 
 
+@pytest.mark.requires_windows
 def test_stop_script_handles_a_worker_descendant(tmp_path: Path) -> None:
     result = run_stop_script_harness(tmp_path, stop_process_fails=False)
 
@@ -118,6 +124,7 @@ def test_stop_script_handles_a_worker_descendant(tmp_path: Path) -> None:
     assert expected_message in result.stdout
 
 
+@pytest.mark.requires_windows
 def test_stop_script_falls_back_to_taskkill_when_stop_process_fails(tmp_path: Path) -> None:
     result = run_stop_script_harness(tmp_path, stop_process_fails=True)
 

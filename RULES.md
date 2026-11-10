@@ -1,5 +1,7 @@
 # Rules
 
+- 可选筛除图片导出默认关闭，仅在新复制导出中将本次资格筛选和文件夹数量筛选排除的有效图片按原始字节平铺到 `_excluded`；不得修改源数据、人工决定或纳入计数，不得因同名或相同内容丢图片，不得将筛除图片混入训练目录。
+
 - Keep changes limited to restoring the local WebUI and checking related scripts.
 - Use only project-local Python, Node, package caches, models, and generated output.
 - Do not modify source datasets, model files, or unrelated user changes.

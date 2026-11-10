@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useRef, useState } from 'react'
 
+import { parseApiTime } from '../apiTime'
 import { controlTask, type TaskControlAction } from '../clients/tasks'
 import { ComponentRunPanel } from '../components/ComponentRunPanel'
 import { isCopyExportTask, profileDisplayName, profileWorkspaceSummary, workspaceDisplayName } from '../profileWorkspace'
@@ -277,7 +278,7 @@ function formatTime(value: string) {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-  }).format(new Date(value))
+  }).format(parseApiTime(value))
 }
 
 function canPause(status: string) {

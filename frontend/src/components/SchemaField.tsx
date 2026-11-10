@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import type { JsonSchema, JsonValue } from '../types'
 import { workspaceDisplayName } from '../profileWorkspace'
@@ -158,25 +158,18 @@ function SchemaField({
   }
 
   if (type === 'integer' || type === 'number') {
-    const minimum = resolved.minimum ?? resolved.exclusiveMinimum
-    const maximum = resolved.maximum ?? resolved.exclusiveMaximum
     return (
-      <div className="field schema-field">
-        <span className="field-label"><label htmlFor={fieldId}>{label}</label><FieldHelp label={label} text={help} /></span>
-        <input
-          id={fieldId}
-          disabled={disabled}
-          max={maximum}
-          min={minimum}
-          onChange={(event) => {
-            if (event.target.value === '') return
-            onChange(Number(event.target.value))
-          }}
-          step={resolved.multipleOf ?? (type === 'integer' ? 1 : 'any')}
-          type="number"
-          value={typeof value === 'number' ? value : ''}
-        />
-      </div>
+      <NumberField
+        disabled={disabled}
+        fieldId={fieldId}
+        help={help}
+        label={label}
+        maximum={resolved.maximum ?? resolved.exclusiveMaximum}
+        minimum={resolved.minimum ?? resolved.exclusiveMinimum}
+        onChange={onChange}
+        step={resolved.multipleOf ?? (type === 'integer' ? 1 : 'any')}
+        value={value}
+      />
     )
   }
 
@@ -203,6 +196,67 @@ function SchemaField({
           value={typeof value === 'string' ? value : ''}
         />
       )}
+    </div>
+  )
+}
+
+// The input keeps its own text draft so an emptied field stays empty while the user retypes; the
+// numeric value is only committed once the text parses, otherwise the old value comes back.
+function NumberField({
+  fieldId,
+  label,
+  help,
+  value,
+  minimum,
+  maximum,
+  step,
+  disabled,
+  onChange,
+}: {
+  fieldId: string
+  label: string
+  help: string
+  value: JsonValue
+  minimum: number | undefined
+  maximum: number | undefined
+  step: number | 'any'
+  disabled: boolean
+  onChange: (value: JsonValue) => void
+}) {
+  const [draft, setDraft] = useState(() => (typeof value === 'number' ? String(value) : ''))
+  useEffect(() => {
+    setDraft((current) => {
+      const parsed = Number(current.trim())
+      if (current.trim() !== '' && Number.isFinite(parsed) && parsed === value) return current
+      return typeof value === 'number' ? String(value) : ''
+    })
+  }, [value])
+  const commit = () => {
+    if (disabled) return
+    const trimmed = draft.trim()
+    const parsed = Number(trimmed)
+    if (trimmed !== '' && Number.isFinite(parsed)) {
+      setDraft(String(parsed))
+      if (parsed !== value) onChange(parsed)
+      return
+    }
+    setDraft(typeof value === 'number' ? String(value) : '')
+  }
+  return (
+    <div className="field schema-field">
+      <span className="field-label"><label htmlFor={fieldId}>{label}</label><FieldHelp label={label} text={help} /></span>
+      <input
+        id={fieldId}
+        disabled={disabled}
+        max={maximum}
+        min={minimum}
+        onBlur={commit}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => { if (event.key === 'Enter') commit() }}
+        step={step}
+        type="number"
+        value={draft}
+      />
     </div>
   )
 }
@@ -283,18 +337,32 @@ function ObjectArrayField({
   const itemSchema = resolveSchema(root, schema.items ?? {})
   const minimum = schema.minItems ?? 0
   const maximum = schema.maxItems ?? Number.POSITIVE_INFINITY
+  // Rows own draft state (numbers, free-text lists, raw JSON), so they need a key that survives a
+  // deletion in the middle. Keys are minted here and spliced out with the row they belong to; a
+  // length change from outside simply extends or trims the pool.
+  const keys = useRef<string[]>([])
+  const nextKey = useRef(0)
+  if (keys.current.length < value.length) {
+    while (keys.current.length < value.length) keys.current.push(`array-item-${nextKey.current++}`)
+  } else if (keys.current.length > value.length) {
+    keys.current = keys.current.slice(0, value.length)
+  }
+  const removeAt = (index: number) => {
+    keys.current.splice(index, 1)
+    onChange(value.filter((_, itemIndex) => itemIndex !== index))
+  }
   return (
     <fieldset className="schema-fieldset schema-array-fieldset">
       <legend><span>{label}</span><FieldHelp label={label} text={help} /></legend>
       <div className="schema-array-items">
         {value.map((item, index) => (
-          <div className="schema-array-item" key={index}>
+          <div className="schema-array-item" key={keys.current[index]}>
             <header>
               <strong>{label} {index + 1}</strong>
               <button
                 className="icon-button danger-icon"
                 disabled={disabled || value.length <= minimum}
-                onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))}
+                onClick={() => removeAt(index)}
                 title="删除项目"
                 type="button"
               >
@@ -459,7 +527,7 @@ const FIELD_LABELS: Record<string, string> = {
   max_iterations: '最大迭代次数',
   outlier_sigma: '离群标准差倍数',
   minimum_style_score: '最低风格分',
-  lsnet_weight: 'LSNet 风格特征权重',
+  lsnet_weight: '画师风格特征权重',
   gram_weight: '纹理特征权重',
   dino_weight: '语义特征权重',
   gram_average_weight: '平均纹理权重',

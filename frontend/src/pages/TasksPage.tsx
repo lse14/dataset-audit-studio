@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useId, useMemo, useState } from 'react'
 
+import { parseApiTime } from '../apiTime'
 import {
   getRuntimeTuningRecommendation,
   listComponents,
@@ -1165,5 +1166,5 @@ function formatDate(value: string) {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(value))
+  }).format(parseApiTime(value))
 }

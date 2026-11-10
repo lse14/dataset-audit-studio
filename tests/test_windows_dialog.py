@@ -109,6 +109,7 @@ class _ExplodingReadyProcess:
         self.returncode = 1
 
 
+@pytest.mark.requires_windows
 def test_select_directory_decodes_unicode_path_and_uses_existing_parent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -146,6 +147,7 @@ def test_select_directory_decodes_unicode_path_and_uses_existing_parent(
     assert kwargs["stdin"] is subprocess.DEVNULL
 
 
+@pytest.mark.requires_windows
 def test_native_picker_host_reuses_one_sta_process_and_closes_it(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -401,6 +403,7 @@ def test_webui_starts_when_native_picker_prewarm_raises_unexpected_error(
     assert FailingPickerHost.instances[0].closed == 1
 
 
+@pytest.mark.requires_windows
 def test_select_directory_returns_none_when_cancelled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -449,6 +452,7 @@ def test_select_file_decodes_a_model_file_and_uses_the_native_file_mode(
     assert command[command.index("-Description") + 1] == "选择本地模型文件"
 
 
+@pytest.mark.requires_windows
 def test_select_directory_rejects_nonexistent_selected_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -471,6 +475,7 @@ def test_select_directory_rejects_nonexistent_selected_path(
         windows_dialog.select_directory(project_root=project, purpose="source")
 
 
+@pytest.mark.requires_windows
 def test_select_directory_reports_powershell_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -487,6 +492,7 @@ def test_select_directory_reports_powershell_failure(
         windows_dialog.select_directory(project_root=project, purpose="source")
 
 
+@pytest.mark.requires_windows
 def test_select_directory_rejects_a_second_open_dialog(tmp_path: Path) -> None:
     project = _project_with_dialog_script(tmp_path)
     assert windows_dialog._DIALOG_LOCK.acquire(blocking=False)

@@ -88,10 +88,18 @@ def _verify_huggingface(model, *, allow_large: bool) -> Outcome:
     metadata = _request_json(api_url)
     if metadata.get("sha") != model.source.revision:
         raise RuntimeError(f"Revision mismatch for {model.id}")
-    upstream_license = str(dict(metadata.get("cardData") or {}).get("license", ""))
-    if upstream_license.casefold() != model.source.license.casefold():
+    card = dict(metadata.get("cardData") or {})
+    # Hub cards may only carry the generic placeholder "other" and put the real
+    # identifier in license_name (Kaloscope v3 declares license_name "dinov3"), so
+    # either field is allowed to name the license the registry records.
+    upstream_licenses = {
+        str(card.get("license", "")).casefold(),
+        str(card.get("license_name", "")).casefold(),
+    }
+    if model.source.license.casefold() not in upstream_licenses:
         raise RuntimeError(
-            f"License mismatch for {model.id}: {upstream_license} != {model.source.license}"
+            f"License mismatch for {model.id}: {sorted(upstream_licenses)} != "
+            f"{model.source.license}"
         )
     siblings = {item["rfilename"]: item for item in metadata.get("siblings", [])}
     outcome = Outcome()

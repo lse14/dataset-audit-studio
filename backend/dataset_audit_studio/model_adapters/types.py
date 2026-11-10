@@ -42,6 +42,7 @@ SUPPORTED_LOADERS = frozenset(
         "community_forensics_vit_small_384_v1",
         "dinov2_style_guard_v1",
         "jtp3_hydra_local_v1",
+        "kaloscope_v3_dinov3_vitb16_v1",
         "lsnet_kaloscope_v2_features_v1",
         "openai_clip_vit_l14_v1",
         "ppocrv5_server_det_v1",

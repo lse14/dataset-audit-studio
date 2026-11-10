@@ -16,6 +16,7 @@ export function createExportRun(taskId: string, input: ExportRunCreateInput): Pr
       sample_seen_mode: input.sample_seen_mode,
       sample_seen_target: input.sample_seen_target,
       image_format: input.image_format,
+      export_excluded: input.export_excluded,
       preview_digest: input.preview_digest,
     }),
   })

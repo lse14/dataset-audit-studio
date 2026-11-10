@@ -138,6 +138,31 @@ test('request raises canonical ApiError messages from detail, code, and HTTP fal
   }
 })
 
+test('request flattens FastAPI validation arrays instead of stringifying objects', async () => {
+  const originalFetch = globalThis.fetch
+
+  try {
+    const { request } = await canonicalHttp()
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        detail: [
+          { type: 'int_parsing', loc: ['body', 'limit'], msg: 'Input should be a valid integer' },
+          { type: 'missing', loc: ['body', 'source_root'], msg: 'Field required' },
+        ],
+      }),
+    })
+
+    await assert.rejects(
+      request('/api/tasks'),
+      (error) => error instanceof Error && error.message === 'body.limit: Input should be a valid integer；body.source_root: Field required',
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('legacy API facade is absent', () => {
   assert.equal(existsSync(API_PATH), false)
 })

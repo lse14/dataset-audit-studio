@@ -37,8 +37,11 @@ export function releaseCopyExport(
   })
 }
 
-export function listTasks(): Promise<TaskList> {
-  return request<TaskList>('/api/tasks?limit=200')
+// The backend clamps `limit` to 200 and paginates by `offset`; callers page with `listTasks(offset)`
+// so task lists longer than one page stay reachable. The first page keeps the bare `?limit=` URL.
+export function listTasks(offset = 0, limit = 200): Promise<TaskList> {
+  const offsetParam = offset > 0 ? `&offset=${offset}` : ''
+  return request<TaskList>(`/api/tasks?limit=${limit}${offsetParam}`)
 }
 
 export function getTask(taskId: string): Promise<Task> {

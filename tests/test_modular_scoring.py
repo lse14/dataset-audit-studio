@@ -1012,6 +1012,7 @@ def test_community_ai_does_not_request_clip_capabilities() -> None:
     assert ModularScoringComponentService._clip_capabilities(config) == ()
 
 
+@pytest.mark.requires_windows
 def test_community_coordinator_does_not_wait_for_clip(
     database: Database,
     task_service: TaskService,
@@ -1046,6 +1047,7 @@ def test_community_coordinator_does_not_wait_for_clip(
     ]
 
 
+@pytest.mark.requires_windows
 def test_coordinator_spawns_each_component_with_only_its_models(
     database: Database,
     task_service: TaskService,

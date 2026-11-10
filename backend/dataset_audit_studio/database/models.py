@@ -9,7 +9,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
-    DateTime,
     Float,
     ForeignKey,
     Index,
@@ -20,7 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from dataset_audit_studio.database.base import Base, TimestampMixin, utc_now
+from dataset_audit_studio.database.base import Base, TimestampMixin, UTCDateTime, utc_now
 from dataset_audit_studio.database.enums import (
     ArtifactState,
     ComponentRunState,
@@ -78,8 +77,8 @@ class Task(TimestampMixin, Base):
     execution_epoch: Mapped[int] = mapped_column(Integer, default=0)
     error_code: Mapped[str | None] = mapped_column(String(80))
     error_message: Mapped[str | None] = mapped_column(Text)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class TaskConfig(Base):
@@ -95,7 +94,7 @@ class TaskConfig(Base):
     revision: Mapped[int] = mapped_column(Integer)
     config_hash: Mapped[str] = mapped_column(String(64))
     config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)
 
 
 class TaskPreset(TimestampMixin, Base):
@@ -133,9 +132,9 @@ class WorkerLease(Base):
     )
     owner: Mapped[str] = mapped_column(String(160))
     execution_epoch: Mapped[int] = mapped_column(Integer)
-    acquired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    acquired_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)
+    heartbeat_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime(), index=True)
 
 
 class PhaseCheckpoint(Base):
@@ -156,7 +155,7 @@ class PhaseCheckpoint(Base):
     completed_items: Mapped[int] = mapped_column(BigInteger)
     execution_epoch: Mapped[int] = mapped_column(Integer)
     artifact_id: Mapped[str | None] = mapped_column(ForeignKey("artifacts.id", ondelete="SET NULL"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)
 
 
 class ComponentRun(TimestampMixin, Base):
@@ -208,8 +207,8 @@ class ComponentRun(TimestampMixin, Base):
     auto_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     error_code: Mapped[str | None] = mapped_column(String(120))
     error_message: Mapped[str | None] = mapped_column(Text)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class Sample(TimestampMixin, Base):
@@ -283,7 +282,7 @@ class ModelResult(Base):
     preprocessing_version: Mapped[str] = mapped_column(String(80))
     config_hash: Mapped[str] = mapped_column(String(64))
     result_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)
 
 
 class Evidence(Base):
@@ -307,7 +306,7 @@ class Evidence(Base):
     review_only: Mapped[bool] = mapped_column(Boolean, default=False)
     bbox_json: Mapped[list[float] | None] = mapped_column(JSON)
     algorithm_version: Mapped[str] = mapped_column(String(120))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)
 
 
 class ReviewDecision(Base):
@@ -329,7 +328,7 @@ class ReviewDecision(Base):
         ForeignKey("review_decisions.id", ondelete="SET NULL")
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)
 
 
 class ClusterNode(Base):
@@ -355,7 +354,7 @@ class ClusterNode(Base):
         ForeignKey("artifacts.id", ondelete="SET NULL")
     )
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)
 
 
 class ClusterMembership(Base):
@@ -402,7 +401,7 @@ class ResolutionAssessment(Base):
     aspect_ratio: Mapped[float] = mapped_column(Float)
     eligible: Mapped[bool] = mapped_column(Boolean)
     risk_codes: Mapped[list[str]] = mapped_column(JSON, default=list)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)
 
 
 class Artifact(TimestampMixin, Base):
@@ -498,8 +497,8 @@ class ExportRun(TimestampMixin, Base):
     summary_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     error_code: Mapped[str | None] = mapped_column(String(80))
     error_message: Mapped[str | None] = mapped_column(Text)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
 
 class TaskEvent(Base):
@@ -517,4 +516,4 @@ class TaskEvent(Base):
     from_status: Mapped[str | None] = mapped_column(String(32))
     to_status: Mapped[str | None] = mapped_column(String(32))
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now)

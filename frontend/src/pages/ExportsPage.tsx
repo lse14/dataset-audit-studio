@@ -15,19 +15,30 @@ import type { ExportRun, ExportRunPreview, ExportRunSettings, Task } from '../ty
 import { EmptyState, ErrorBlock, LoadingBlock, StatusPill } from '../ui'
 
 const activeRunStatuses = new Set(['queued', 'planning', 'copying', 'verifying', 'publishing'])
+// Mirrors `ELIGIBILITY_REASONS` in backend/dataset_audit_studio/export_runs/eligibility.py minus
+// `included`, which is a keep reason and never part of an exclusion summary.
+const invalidMetricReasons = ['missing', 'non_finite', 'out_of_range', 'provenance_mismatch', 'ambiguous']
 const exclusionKeys = [
+  'resolution_below_minimum',
   'manual_exclude',
   'domain_below_minimum',
-  'duplicate_representative',
-  'style_outlier',
+  ...invalidMetricReasons.map((reason) => `domain_${reason}`),
   'aesthetic_below_minimum',
-  'missing',
-  'non_finite',
-  'out_of_range',
-  'provenance_mismatch',
-  'ambiguous',
+  ...invalidMetricReasons.map((reason) => `aesthetic_${reason}`),
+  'style_outlier',
+  ...invalidMetricReasons.map((reason) => `style_${reason}`),
+  'duplicate_non_representative',
   'folder_below_minimum',
 ]
+const exclusionReasonLabels: Record<string, string> = {
+  manual_exclude: '人工排除',
+  resolution_below_minimum: '分辨率不足',
+  duplicate_non_representative: '重复非代表',
+  style_outlier: '画风离群',
+  domain_below_minimum: '目标域不足',
+  aesthetic_below_minimum: '美学不足',
+  folder_below_minimum: '文件夹数量不足',
+}
 
 export function ExportsPage({ task }: { task: Task | null }) {
   const [restoreBusy, setRestoreBusy] = useState(false)
@@ -48,6 +59,7 @@ export function ExportsPage({ task }: { task: Task | null }) {
   const [sampleSeenMode, setSampleSeenMode] = useState<ExportRunSettings['sample_seen_mode']>('off')
   const [sampleSeenTarget, setSampleSeenTarget] = useState('')
   const [imageFormat, setImageFormat] = useState<ExportRunSettings['image_format']>('original')
+  const [exportExcluded, setExportExcluded] = useState(false)
   const [preview, setPreview] = useState<ExportRunPreview | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
@@ -124,6 +136,7 @@ export function ExportsPage({ task }: { task: Task | null }) {
       sample_seen_mode: sampleSeenMode,
       sample_seen_target: sampleSeenMode === 'manual' ? Number(sampleSeenTarget) : null,
       image_format: imageFormat,
+      export_excluded: exportExcluded,
     }
   }
 
@@ -218,6 +231,7 @@ export function ExportsPage({ task }: { task: Task | null }) {
             <label className="field"><span>画风离群筛选</span><select aria-label="画风离群筛选" disabled={creating || previewLoading} onChange={(event) => { setStyleOutlierMode(event.target.value as ExportRunSettings['style_outlier_mode']); invalidatePreview() }} value={styleOutlierMode}><option value="off">关闭</option><option value="strong">仅强离群</option><option value="all">离群与强离群</option></select></label>
             <label className="repeat-aesthetic-toggle"><input aria-label="启用美学最低分" checked={aestheticEnabled} disabled={creating || previewLoading} onChange={(event) => { setAestheticEnabled(event.target.checked); invalidatePreview() }} type="checkbox" /><span>按美学最低分筛选</span></label>
             <label className="repeat-aesthetic-toggle"><input aria-label="增加 repeat 前缀" checked={addRepeatPrefix} disabled={creating || previewLoading} onChange={(event) => { setAddRepeatPrefix(event.target.checked); invalidatePreview() }} type="checkbox" /><span>增加 repeat 前缀</span></label>
+            <label className="repeat-aesthetic-toggle"><input aria-label="导出被筛除的图片" checked={exportExcluded} disabled={creating || previewLoading} onChange={(event) => { setExportExcluded(event.target.checked); invalidatePreview() }} type="checkbox" /><span>导出被筛除的图片（原格式平铺到 _excluded）</span></label>
             {aestheticEnabled ? <label className="field"><span>美学最低分</span><input aria-label="美学最低分" disabled={creating || previewLoading} max="5" min="1" onChange={(event) => { setAestheticMinimum(event.target.value); invalidatePreview() }} step="0.5" type="number" value={aestheticMinimum} /></label> : null}
             <label className="field"><span>sample seen 配平</span><select aria-label="sample seen 配平" disabled={creating || previewLoading} onChange={(event) => { setSampleSeenMode(event.target.value as ExportRunSettings['sample_seen_mode']); invalidatePreview() }} value={sampleSeenMode}><option value="off">关闭</option><option value="auto">自动</option><option value="manual">手动</option></select></label>
             {sampleSeenMode === 'manual' ? <label className="field"><span>手动 sample seen 目标</span><input aria-label="手动 sample seen 目标" disabled={creating || previewLoading} min="1" onChange={(event) => { setSampleSeenTarget(event.target.value); invalidatePreview() }} step="1" type="number" value={sampleSeenTarget} /></label> : null}
@@ -226,7 +240,7 @@ export function ExportsPage({ task }: { task: Task | null }) {
             {formError ? <ErrorBlock message={formError} /> : null}
             <div className="repeat-export-actions span-2"><button className="button secondary" disabled={creating || previewLoading} onClick={() => void requestPreview()} type="button">{previewLoading ? '正在预览' : '预览导出'}</button><button className="button primary" disabled={creating || previewLoading || preview === null || domainError !== null || aestheticError !== null || folderImagesError !== null || sampleTargetError !== null} onClick={() => void create()} type="button"><FolderOutput size={16} />{isFirstCopy ? '完成复核并创建导出' : '创建重复导出'}</button></div>
           </div>
-          {preview ? <ExportPreview imageFormat={imageFormat} preview={preview} /> : null}
+          {preview ? <ExportPreview exportExcluded={exportExcluded} imageFormat={imageFormat} preview={preview} /> : null}
         </section>
       ) : null}
 
@@ -245,16 +259,19 @@ export function ExportsPage({ task }: { task: Task | null }) {
   )
 }
 
-function ExportPreview({ imageFormat, preview }: { imageFormat: ExportRunSettings['image_format']; preview: ExportRunPreview }) {
+function ExportPreview({ exportExcluded, imageFormat, preview }: { exportExcluded: boolean; imageFormat: ExportRunSettings['image_format']; preview: ExportRunPreview }) {
   const excluded = exclusionText(preview.exclusion_counts)
-  return <section className="export-preview" aria-live="polite"><header><strong>预览</strong><span>纳入 {preview.included_count.toLocaleString()}，{excluded}</span></header><div className="export-preview-settings"><span>图像 {imageFormatLabel(imageFormat)}</span><span>目标域 {preview.domain_minimum ?? '关闭'}</span><span>重复 {preview.exclude_exact_visual_duplicates ? '完全和视觉' : '关闭'}</span><span>画风 {styleOutlierLabel(preview.style_outlier_mode)}</span><span>美学 {preview.aesthetic_minimum ?? '关闭'}</span></div><div className="export-preview-folders">{preview.folders.map((folder, index) => { const item = record(folder); const name = text(item?.source_identifier) ?? `文件夹 ${index + 1}`; const imageCount = count(item?.image_count); const excludedFolder = item?.excluded === true; const warningCodes = Array.isArray(item?.warning_codes) ? item.warning_codes.filter((code): code is string => typeof code === 'string') : []; return <div className="export-preview-folder" key={`${name}:${index}`}><strong>{name}</strong><span>{excludedFolder ? '排除' : '纳入'} {imageCount.toLocaleString()} 张</span>{warningCodes.length > 0 ? <small>{warningCodes.join('，')}</small> : null}</div> })}</div>{preview.warnings.length > 0 ? <div className="export-preview-warnings">{preview.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div> : null}</section>
+  return <section className="export-preview" aria-live="polite"><header><strong>预览</strong><span>纳入 {preview.included_count.toLocaleString()}，{excluded}</span></header><div className="export-preview-settings"><span>图像 {imageFormatLabel(imageFormat)}</span>{exportExcluded ? <span>筛除图片 {count(preview.excluded_image_count).toLocaleString()} 张，原格式平铺到 _excluded</span> : null}<span>目标域 {preview.domain_minimum ?? '关闭'}</span><span>重复 {preview.exclude_exact_visual_duplicates ? '完全和视觉' : '关闭'}</span><span>画风 {styleOutlierLabel(preview.style_outlier_mode)}</span><span>美学 {preview.aesthetic_minimum ?? '关闭'}</span></div><div className="export-preview-folders">{preview.folders.map((folder, index) => { const item = record(folder); const name = text(item?.source_identifier) ?? `文件夹 ${index + 1}`; const imageCount = count(item?.image_count); const excludedFolder = item?.excluded === true; const warningCodes = Array.isArray(item?.warning_codes) ? item.warning_codes.filter((code): code is string => typeof code === 'string') : []; return <div className="export-preview-folder" key={`${name}:${index}`}><strong>{name}</strong><span>{excludedFolder ? '排除' : '纳入'} {imageCount.toLocaleString()} 张</span>{warningCodes.length > 0 ? <small>{warningCodes.join('，')}</small> : null}</div> })}</div>{preview.warnings.length > 0 ? <div className="export-preview-warnings">{preview.warnings.map((warning) => <span key={warning}>{warning}</span>)}</div> : null}</section>
 }
 
 function ExportRunHistory({ run }: { run: ExportRun }) {
   const summary = record(run.summary)
   const imageFormat = imageFormatLabel(run.settings.image_format)
+  const domainMinimum = asDomainMinimum(run.settings.domain_minimum)
+  const excludeExactVisualDuplicates = run.settings.exclude_exact_visual_duplicates === true
+  const styleOutlierMode = asStyleOutlierMode(run.settings.style_outlier_mode)
   const total = summary ? { included: count(summary.included_count), exclusions: record(summary.exclusion_counts), warnings: Array.isArray(summary.warnings) ? summary.warnings.filter((item): item is string => typeof item === 'string') : [] } : null
-  return <article className="repeat-export-run"><header><div><strong title={run.output_root}>{run.output_root}</strong><span>最低分辨率 {run.minimum_resolution}</span></div><StatusPill value={run.status} /></header><dl><div><dt>进度</dt><dd>{run.progress_current.toLocaleString()} / {run.progress_total?.toLocaleString() ?? '未知'} 个文件</dd></div><div><dt>大小</dt><dd>{formatBytes(run.bytes_current)} / {run.bytes_total === null ? '未知' : formatBytes(run.bytes_total)}</dd></div><div><dt>图像格式</dt><dd>{imageFormat}</dd></div><div><dt>清单</dt><dd title={run.manifest_sha256 ?? ''}>{run.manifest_sha256 ?? '尚未生成'}</dd></div>{run.aesthetic_minimum !== null ? <div><dt>美学最低分</dt><dd>{run.aesthetic_minimum}</dd></div> : null}</dl><div className="repeat-export-summary"><strong>筛除设置</strong><span>目标域 {run.domain_minimum ?? '关闭'}，重复 {run.exclude_exact_visual_duplicates ? '完全和视觉' : '关闭'}，画风 {styleOutlierLabel(run.style_outlier_mode)}</span></div>{run.error_code || run.error_message ? <ErrorBlock message={[run.error_code, run.error_message].filter(Boolean).join('：')} /> : null}{total ? <div className="repeat-export-summary"><strong>汇总</strong><span>导出 {total.included.toLocaleString()}，{exclusionText(total.exclusions ?? {})}</span>{total.warnings.length > 0 ? <span>警告 {total.warnings.join('，')}</span> : null}</div> : null}</article>
+  return <article className="repeat-export-run"><header><div><strong title={run.output_root}>{run.output_root}</strong><span>最低分辨率 {run.minimum_resolution}</span></div><StatusPill value={run.status} /></header><dl><div><dt>进度</dt><dd>{run.progress_current.toLocaleString()} / {run.progress_total?.toLocaleString() ?? '未知'} 个文件</dd></div><div><dt>大小</dt><dd>{formatBytes(run.bytes_current)} / {run.bytes_total === null ? '未知' : formatBytes(run.bytes_total)}</dd></div><div><dt>图像格式</dt><dd>{imageFormat}</dd></div>{run.settings.export_excluded === true ? <div><dt>筛除导出</dt><dd>已启用，原格式平铺到 _excluded</dd></div> : null}<div><dt>清单</dt><dd title={run.manifest_sha256 ?? ''}>{run.manifest_sha256 ?? '尚未生成'}</dd></div>{run.aesthetic_minimum !== null ? <div><dt>美学最低分</dt><dd>{run.aesthetic_minimum}</dd></div> : null}</dl><div className="repeat-export-summary"><strong>筛除设置</strong><span>目标域 {domainMinimum ?? '关闭'}，重复 {excludeExactVisualDuplicates ? '完全和视觉' : '关闭'}，画风 {styleOutlierLabel(styleOutlierMode)}</span></div>{run.error_code || run.error_message ? <ErrorBlock message={[run.error_code, run.error_message].filter(Boolean).join('：')} /> : null}{total ? <div className="repeat-export-summary"><strong>汇总</strong><span>导出 {total.included.toLocaleString()}，{exclusionText(total.exclusions ?? {})}</span>{run.settings.export_excluded === true ? <span>筛除区 {count(summary?.excluded_image_count).toLocaleString()} 张</span> : null}{total.warnings.length > 0 ? <span>警告 {total.warnings.join('，')}</span> : null}</div> : null}</article>
 }
 
 function positiveIntegerError(value: string, label: string): string | null {
@@ -274,9 +291,25 @@ function count(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
+// Known reasons keep the canonical order so the line reads the same across runs; any reason this
+// build does not know yet is appended verbatim instead of being silently dropped.
 function exclusionText(summary: Record<string, unknown> | Record<string, number>): string {
-  const values = exclusionKeys.map((key) => [key, count(summary[key])] as const).filter(([, value]) => value > 0)
-  return values.length === 0 ? '无排除' : values.map(([key, value]) => `${key} ${value}`).join('，')
+  const known = exclusionKeys.filter((key) => count(summary[key]) > 0)
+  const unknown = Object.keys(summary).filter((key) => !exclusionKeys.includes(key) && key !== 'included' && count(summary[key]) > 0)
+  const ordered = [...known, ...unknown]
+  return ordered.length === 0
+    ? '无排除'
+    : ordered.map((key) => `${exclusionReasonLabels[key] ?? key} ${count(summary[key]).toLocaleString()}`).join('，')
+}
+
+// `ExportRun` only carries the raw `settings` blob, so these narrow the untyped values back into
+// the settings contract; anything unrecognised falls back to the disabled default.
+function asDomainMinimum(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function asStyleOutlierMode(value: unknown): ExportRunSettings['style_outlier_mode'] {
+  return value === 'strong' || value === 'all' ? value : 'off'
 }
 
 function styleOutlierLabel(mode: ExportRunSettings['style_outlier_mode']): string {

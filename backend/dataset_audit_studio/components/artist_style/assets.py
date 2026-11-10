@@ -7,10 +7,14 @@ from dataset_audit_studio.components.artist_style.config import StyleConfig
 from dataset_audit_studio.core.model_assets import RuntimeAssets
 
 DINO_MODEL_ID = "dinov2_large"
+KALOSCOPE_MODEL_ID = "kaloscope_v3_artist"
+# Kept for the retained v2 entry and the rollback path.
 LSNET_MODEL_ID = "lsnet_kaloscope_v2"
 VGG_MODEL_ID = "vgg19_imagenet1k_v1"
-STYLE_MODEL_ID = "artist_style_lsnet_v2"
-STYLE_PREPROCESSING_VERSION = "lsnet-kaloscope-v2-448-v1+vgg19-pooled-gram-16-v2+dinov2-pad224-v1"
+STYLE_MODEL_ID = "artist_style_kaloscope_v3"
+STYLE_PREPROCESSING_VERSION = (
+    "kaloscope-v3-dinov3b16-512-v1+vgg19-pooled-gram-16-v2+dinov2-pad224-v1"
+)
 
 
 def requested_style_model_ids(config: StyleConfig) -> tuple[str, ...]:
@@ -18,7 +22,7 @@ def requested_style_model_ids(config: StyleConfig) -> tuple[str, ...]:
         return ()
     model_ids: list[str] = []
     if config.lsnet_weight > 0.0:
-        model_ids.append(LSNET_MODEL_ID)
+        model_ids.append(KALOSCOPE_MODEL_ID)
     if config.gram_weight > 0.0:
         model_ids.append(VGG_MODEL_ID)
     if config.dino_weight > 0.0:

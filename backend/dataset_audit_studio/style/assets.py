@@ -1,5 +1,6 @@
 from dataset_audit_studio.components.artist_style.assets import (
     DINO_MODEL_ID,
+    KALOSCOPE_MODEL_ID,
     LSNET_MODEL_ID,
     STYLE_MODEL_ID,
     STYLE_PREPROCESSING_VERSION,
@@ -10,6 +11,7 @@ from dataset_audit_studio.components.artist_style.assets import (
 
 __all__ = [
     "DINO_MODEL_ID",
+    "KALOSCOPE_MODEL_ID",
     "LSNET_MODEL_ID",
     "STYLE_MODEL_ID",
     "STYLE_PREPROCESSING_VERSION",

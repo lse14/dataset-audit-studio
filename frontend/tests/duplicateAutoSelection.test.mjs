@@ -65,6 +65,29 @@ test('auto selection ranks missing dimensions below known pixel areas and uses t
   assert.deepEqual([...selected], ['missing', 'missing-z'])
 })
 
+test('auto selection never excludes a manually kept member and keeps it as the representative', () => {
+  const selected = selectDuplicateMembersForExclusion([
+    group([
+      member({ id: 'big-pending', path: 'a/big.png', pixelArea: 900 * 900 }),
+      member({ id: 'small-kept', path: 'a/small.png', pixelArea: 400 * 400, decision: 'approved_keep' }),
+      member({ id: 'other-pending', path: 'a/other.png', pixelArea: 300 * 300 }),
+    ]),
+  ])
+
+  assert.deepEqual([...selected], ['big-pending', 'other-pending'])
+})
+
+test('auto selection folds relative path case before falling back to the raw path', () => {
+  const selected = selectDuplicateMembersForExclusion([
+    group([
+      member({ id: 'upper', path: 'Alpha.png', pixelArea: 1024 * 1024 }),
+      member({ id: 'lower', path: 'alpha.png', pixelArea: 1024 * 1024 }),
+    ]),
+  ])
+
+  assert.deepEqual([...selected], ['lower'])
+})
+
 test('duplicate page uses automatic exclusion selection and exposes pixel area in its member type', async () => {
   const [page, types] = await Promise.all([
     readFile(DUPLICATES_PAGE_PATH, 'utf8'),

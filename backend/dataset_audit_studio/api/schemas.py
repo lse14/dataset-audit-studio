@@ -77,6 +77,7 @@ class ReviewGateReleaseRequest(TaskControlRequest):
     sample_seen_mode: Any = None
     sample_seen_target: Any = None
     image_format: Any = None
+    export_excluded: Any = False
     preview_digest: Any = None
 
 
@@ -141,6 +142,7 @@ class ExportRunCreate(BaseModel):
     sample_seen_mode: Any = None
     sample_seen_target: Any = None
     image_format: Any = None
+    export_excluded: Any = False
     preview_digest: Any = None
 
 
@@ -158,6 +160,7 @@ class ExportRunPreviewRequest(BaseModel):
     sample_seen_mode: Any = None
     sample_seen_target: Any = None
     image_format: Any = None
+    export_excluded: Any = False
 
 
 class ExportRunPreviewResponse(BaseModel):
@@ -178,6 +181,7 @@ class ExportRunPreviewResponse(BaseModel):
     eligibility_digest: str
     settings: dict[str, Any]
     included_count: int
+    excluded_image_count: int = 0
     exclusion_counts: dict[str, int]
     folder_below_minimum: dict[str, int]
     folders: tuple[dict[str, Any], ...]
@@ -201,6 +205,9 @@ class ExportRunResponse(BaseModel):
     output_key: str
     minimum_resolution: int
     resolutions: tuple[int, ...]
+    domain_minimum: float | None
+    exclude_exact_visual_duplicates: bool
+    style_outlier_mode: str
     aesthetic_minimum: float | None
     minimum_folder_images: int
     add_repeat_prefix: bool

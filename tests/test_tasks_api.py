@@ -61,7 +61,7 @@ def test_task_api_create_control_and_events(tmp_path) -> None:
     source = tmp_path / "source"
     source.mkdir()
     output = tmp_path / "output"
-    app = create_app(database_path=tmp_path / "api.db")
+    app = create_app(database_path=tmp_path / "api.db", enforce_runtime=False)
 
     with TestClient(app) as client:
         created_response = client.post(
@@ -127,7 +127,7 @@ def test_task_api_create_control_and_events(tmp_path) -> None:
 def test_task_api_rejects_unsafe_paths_and_stale_versions(tmp_path) -> None:
     source = tmp_path / "source"
     source.mkdir()
-    app = create_app(database_path=tmp_path / "validation.db")
+    app = create_app(database_path=tmp_path / "validation.db", enforce_runtime=False)
 
     with TestClient(app) as client:
         inside_source = client.post(
@@ -190,7 +190,7 @@ def test_task_api_rejects_unsafe_paths_and_stale_versions(tmp_path) -> None:
 
 
 def test_removed_api_key_route_is_not_registered(tmp_path) -> None:
-    app = create_app(database_path=tmp_path / "credentials.db")
+    app = create_app(database_path=tmp_path / "credentials.db", enforce_runtime=False)
 
     with TestClient(app) as client:
         legacy_segment = "cap" + "tion-api-key"
@@ -209,7 +209,9 @@ def test_task_delete_removes_terminal_record_and_project_cache_only(tmp_path) ->
     output.mkdir()
     output_marker = output / "keep-output.txt"
     output_marker.write_text("output", encoding="utf-8")
-    app = create_app(database_path=tmp_path / "delete.db", project_root=tmp_path)
+    app = create_app(
+        database_path=tmp_path / "delete.db", enforce_runtime=False, project_root=tmp_path
+    )
 
     with TestClient(app) as client:
         created = client.post(

@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+import pytest
 from dataset_audit_studio.app.component_task_config import ComponentTaskConfigMaterializer
 from dataset_audit_studio.app.profile_materialization import materialize_profile
 from dataset_audit_studio.database.migrate import upgrade_database
@@ -10,6 +11,7 @@ from dataset_audit_studio.model_adapters.registry import DEFAULT_REGISTRY
 from fastapi.testclient import TestClient
 
 
+@pytest.mark.requires_windows
 def test_health_reports_isolated_runtime_and_database(tmp_path) -> None:
     app = create_app(database_path=tmp_path / "health.db")
     with TestClient(app) as client:
@@ -29,7 +31,7 @@ def test_health_reports_isolated_runtime_and_database(tmp_path) -> None:
 
 
 def test_unknown_api_route_is_not_frontend_fallback(tmp_path) -> None:
-    app = create_app(database_path=tmp_path / "not-found.db")
+    app = create_app(database_path=tmp_path / "not-found.db", enforce_runtime=False)
     with TestClient(app) as client:
         response = client.get("/api/not-a-route")
 
@@ -72,7 +74,7 @@ def test_app_startup_recovers_expired_worker_lease(tmp_path) -> None:
     assert service.claim_next(owner="crashed-worker", lease_seconds=5) is not None
     database.dispose()
 
-    app = create_app(database_path=database_path)
+    app = create_app(database_path=database_path, enforce_runtime=False)
     with TestClient(app) as client:
         recovered = client.get(f"/api/tasks/{task.id}").json()
 

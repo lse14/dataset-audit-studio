@@ -74,6 +74,20 @@
     {
       "files": [
         {
+          "path": "v1-artist-classifier/model.safetensors",
+          "sha256": "3e6a971eecc8983047a6e27af8b954368b9ec4fd8bd493f958875210845ef0a1",
+          "size": 625131364
+        }
+      ],
+      "id": "kaloscope_v3_artist",
+      "license": "dinov3",
+      "remote_code_allowed": false,
+      "revision": "5e4bfa229619b7c459ec126283827373df9de564",
+      "source": "https://huggingface.co/heathcliff01/Kaloscope3.0-preview"
+    },
+    {
+      "files": [
+        {
           "path": "448-90.13/best_checkpoint.pth",
           "sha256": "a86ba2fcf430cbb653ac995f7ab9cce34667434ee084973e19edf431808a32ae",
           "size": 2937892740

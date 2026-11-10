@@ -31,6 +31,7 @@ import {
   Thumbnail,
   useElementWidth,
 } from '../ui'
+import { isCuratedConfirmationWindow } from './auditPageSupport'
 
 type ReviewMode = 'ai' | 'style' | 'curated' | 'sae'
 type ReviewItem = AIReviewItem | StyleReviewItem | CuratedReviewItem
@@ -44,11 +45,6 @@ export type ReviewsPageProps = {
   onFolderChange: (folder: string) => void
   notify: Notice
   surface?: ReviewSurface
-}
-
-function isCuratedConfirmationWindow(task: Task | null) {
-  return task?.status === 'evidence_review'
-    || (task?.status === 'paused' && task.resume_state === 'evidence_review')
 }
 
 function modeForSurface(surface: ReviewSurface, task: Task | null): ReviewMode {

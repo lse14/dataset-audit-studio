@@ -136,6 +136,7 @@ class ExportRunPlanner:
         sample_seen_mode: str,
         sample_seen_target: int | None,
         image_format: str = "original",
+        export_excluded: bool = False,
     ) -> ExportRunPreview:
         with self.database.read_session() as session:
             task = session.get(Task, task_id)
@@ -178,6 +179,7 @@ class ExportRunPlanner:
                     "sample_seen_mode": sample_seen_mode,
                     "sample_seen_target": sample_seen_target,
                     "image_format": normalize_image_format(image_format),
+                    "export_excluded": export_excluded,
                     "keep_annotation_files": bool(export.get("keep_annotation_files", True)),
                 },
             )
@@ -199,6 +201,7 @@ class ExportRunPlanner:
             eligibility_digest=str(summary["eligibility_digest"]),
             settings=dict(summary["settings"]),
             included_count=int(summary.get("included_count", 0)),
+            excluded_image_count=int(summary.get("excluded_image_count", 0)),
             exclusion_counts=dict(summary.get("exclusion_counts", {})),
             folder_below_minimum=dict(summary.get("folder_below_minimum", {})),
             folders=tuple(summary.get("folders", ())),
@@ -286,8 +289,13 @@ class ExportRunPlanner:
         style_mode = settings.get("style_outlier_mode")
         if style_mode not in {"off", "strong", "all"}:
             raise ExportRunError("export_style_outlier_mode_invalid", "Style mode is invalid")
-        settings["image_format"] = normalize_image_format(settings.get("image_format", "original"))
-        return dict(settings)
+        if not isinstance(settings.get("export_excluded", False), bool):
+            raise ExportRunError("export_excluded_invalid", "export_excluded must be boolean")
+        return {
+            **settings,
+            "image_format": normalize_image_format(settings.get("image_format", "original")),
+            "export_excluded": settings.get("export_excluded", False),
+        }
 
     def _build_current(
         self, session, task: Task, config: TaskConfig, settings: dict[str, Any]
@@ -456,6 +464,48 @@ class ExportRunPlanner:
                     )
                 if settings.get("keep_annotation_files", True):
                     annotation_requests.append((sample.source_path, relative))
+        if settings.get("export_excluded", False):
+            retained_ids = {row.id for row, _ in retained}
+            excluded_rows = [row for row in rows if row.id not in retained_ids]
+            if excluded_rows and self._folder_key("_excluded") in {
+                self._folder_key(folder) for folder in dataset_roots
+            }:
+                raise ExportRunError(
+                    "export_collision", "Training output folder conflicts with _excluded"
+                )
+            used_names: set[str] = set()
+            for row in excluded_rows:
+                # Copy the original even when training export would use a rendered frame.
+                self._source_folder(row.relative_path, source_root.name)
+                try:
+                    source = source_root.joinpath(
+                        *PurePosixPath(row.relative_path.replace("\\", "/")).parts
+                    ).resolve(strict=True)
+                    source.relative_to(source_root)
+                except (OSError, ValueError) as error:
+                    raise ExportRunError(
+                        "export_input_changed", "Excluded source path is missing or unsafe"
+                    ) from error
+                if not file_identity_matches(
+                    source,
+                    size_bytes=row.source_size,
+                    mtime_ns=row.source_mtime_ns,
+                    sha256=row.source_sha256,
+                ):
+                    raise ExportRunError(
+                        "export_source_hash_mismatch",
+                        f"Source identity changed: {row.relative_path}",
+                    )
+                original = PurePosixPath(row.relative_path)
+                name = original.name
+                counter = 2
+                while self._folder_key(name) in used_names:
+                    name = f"{original.stem}_{counter}{original.suffix}"
+                    counter += 1
+                used_names.add(self._folder_key(name))
+                pending_files.append(
+                    _PendingExportFile(f"_excluded/{name}", "excluded_image", source)
+                )
         folder_summaries = tuple(
             {key: value for key, value in folder.items() if key not in {"rows", "suffixes"}}
             for folder in sorted(
@@ -564,6 +614,9 @@ class ExportRunPlanner:
             "eligibility_digest": pending.eligibility_digest,
             "eligibility_evidence": pending.eligibility_evidence,
             "included_count": pending.included_count,
+            "excluded_image_count": sum(
+                item.kind == "excluded_image" for item in pending.pending_files
+            ),
             "exclusion_counts": dict(pending.exclusion_counts),
             "folder_below_minimum": dict(pending.folder_below_minimum),
             "folders": pending.folder_summaries,
@@ -694,6 +747,10 @@ class ExportRunPlanner:
             snapshot_settings = {**snapshot_settings, "image_format": "original"}
         if isinstance(summary_settings, dict) and "image_format" not in summary_settings:
             summary_settings = {**summary_settings, "image_format": "original"}
+        if isinstance(snapshot_settings, dict) and "export_excluded" not in snapshot_settings:
+            snapshot_settings = {**snapshot_settings, "export_excluded": False}
+        if isinstance(summary_settings, dict) and "export_excluded" not in summary_settings:
+            summary_settings = {**summary_settings, "export_excluded": False}
         if (
             not isinstance(summary, dict)
             or summary.get("schema") != "export.run.summary.v3"

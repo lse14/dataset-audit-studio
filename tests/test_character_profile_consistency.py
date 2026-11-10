@@ -21,8 +21,9 @@ from sqlalchemy import select
 def test_character_consistency_uses_calibrated_defaults() -> None:
     assert algorithm.character_consistency_config_payload() == {
         "minimum_scope_size": 4,
-        "outlier_sigma": 2.04,
+        "outlier_sigma": 2.2,
         "max_iterations": 2,
+        "minimum_centroid_similarity": 0.72,
     }
 
 
@@ -209,7 +210,7 @@ def test_character_hierarchy_persists_reviewable_role_outlier_evidence(
     assert [(item.sample_id, item.code) for item in evidence] == [
         ("other", "character_role_outlier")
     ]
-    assert evidence[0].source == "siglip2_character_consistency_v1"
+    assert evidence[0].source == "siglip2_character_consistency_v2"
     assert evidence[0].severity == "medium"
     assert evidence[0].review_only is True
     assert evidence[0].value_number < evidence[0].threshold_number
@@ -233,3 +234,38 @@ def test_character_evidence_cleanup_chunks_sqlite_parameters(database) -> None:
             )
         finally:
             driver_connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, previous_limit)
+
+
+def test_character_scope_analysis_requires_both_scope_and_absolute_floor() -> None:
+    analyze = getattr(algorithm, "analyze_character_scope", None)
+    assert callable(analyze), "character scope consistency analysis is missing"
+    floor = algorithm._CHARACTER_MINIMUM_CENTROID_SIMILARITY
+
+    def assessments_for(vectors: np.ndarray):
+        return analyze(tuple(f"s-{i}" for i in range(len(vectors))), vectors)
+
+    # Every member sits well above the absolute floor, so a member that is only
+    # relatively weak is kept instead of being thrown out.
+    tight = np.asarray(
+        [
+            [1.0, 0.00, 0.0],
+            [1.0, 0.01, 0.0],
+            [1.0, -0.01, 0.0],
+            [1.0, 0.02, 0.0],
+            [1.0, -0.02, 0.0],
+            [1.0, -0.05, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    tight_flags = assessments_for(tight)
+    assert all(item.centroid_similarity > floor for item in tight_flags)
+    assert all(item.review_required is False for item in tight_flags)
+
+    # The same shape with a far member trips both gates.
+    far = tight.copy()
+    far[-1] = np.asarray([0.0, 1.0, 0.0], dtype=np.float32)
+    far_flags = assessments_for(far)
+    assert far_flags[-1].centroid_similarity < floor
+    assert far_flags[-1].review_required is True
+    assert far_flags[-1].reason == "semantic_similarity_below_scope_threshold"
+    assert [item.sample_id for item in far_flags if item.review_required] == ["s-5"]

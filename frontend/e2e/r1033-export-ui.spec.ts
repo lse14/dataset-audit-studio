@@ -96,26 +96,27 @@ async function installApiMock(page: Page) {
     if (suffix === 'events/stream') return route.fulfill({ body: '', contentType: 'text/event-stream' })
     if (suffix === 'export-runs' && request.method() === 'GET') return json(route, { items: runs[current.id], total: runs[current.id].length, offset: 0, limit: 50 })
     if (suffix === 'export-runs/preview' && request.method() === 'POST') {
-      previews.push(request.postDataJSON())
+      const payload = request.postDataJSON() as { export_excluded?: boolean }
+      previews.push(payload)
       if (failNextPreview) {
         failNextPreview = false
         return json(route, { detail: 'preview stale' }, 409)
       }
-      return json(route, { task_id: current.id, minimum_resolution: 768, aesthetic_minimum: null, minimum_folder_images: 1, add_repeat_prefix: true, sample_seen_mode: 'off', sample_seen_target: null, preview_digest: digest, input_digest: digest, included_count: 2, exclusion_counts: { manual_exclude: 1 }, folder_below_minimum: { folder_count: 0, image_count: 0 }, folders: [{ source_identifier: 'artist-a', output_name: 'artist-a', image_count: 2, excluded: false, warning_codes: [] }], warnings: ['repeat_approximate'] })
+      return json(route, { task_id: current.id, minimum_resolution: 768, aesthetic_minimum: null, minimum_folder_images: 1, add_repeat_prefix: true, sample_seen_mode: 'off', sample_seen_target: null, preview_digest: digest, input_digest: digest, included_count: 2, excluded_image_count: payload.export_excluded ? 1 : 0, exclusion_counts: { manual_exclude: 1 }, folder_below_minimum: { folder_count: 0, image_count: 0 }, folders: [{ source_identifier: 'artist-a', output_name: 'artist-a', image_count: 2, excluded: false, warning_codes: [] }], warnings: ['repeat_approximate'] })
     }
     if (suffix === 'export-runs' && request.method() === 'POST') {
       creates.push({ route: 'repeat', payload: request.postDataJSON() })
-      const payload = request.postDataJSON() as { image_format?: string, output_root: string }
+      const payload = request.postDataJSON() as { export_excluded?: boolean, image_format?: string, output_root: string }
       const created = run(`run-${runs[current.id].length + 1}`, current.id, payload.output_root)
-      created.settings = { image_format: payload.image_format ?? 'original' }
+      created.settings = { export_excluded: payload.export_excluded ?? false, image_format: payload.image_format ?? 'original' }
       runs[current.id].unshift(created)
       return json(route, created, 202)
     }
     if (suffix === 'review-gate/release' && request.method() === 'POST') {
       creates.push({ route: 'first', payload: request.postDataJSON() })
-      const payload = request.postDataJSON() as { image_format?: string, output_root: string }
+      const payload = request.postDataJSON() as { export_excluded?: boolean, image_format?: string, output_root: string }
       const created = run('run-first', current.id, payload.output_root)
-      created.settings = { image_format: payload.image_format ?? 'original' }
+      created.settings = { export_excluded: payload.export_excluded ?? false, image_format: payload.image_format ?? 'original' }
       runs[current.id].unshift(created)
       return json(route, created, 202)
     }
@@ -133,15 +134,52 @@ test('first copy export previews folders and releases the matching digest payloa
   await page.getByRole('textbox', { name: '导出目录', exact: true }).fill('E:/first-new')
   await expect(page.getByLabel('导出图像格式', { exact: true })).toHaveValue('original')
   await page.getByLabel('导出图像格式', { exact: true }).selectOption('webp')
+  await expect(page.getByLabel('导出被筛除的图片', { exact: true })).not.toBeChecked()
+  await page.getByLabel('导出被筛除的图片', { exact: true }).check()
   await page.getByRole('button', { name: '预览导出' }).click()
   await expect(page.getByText('artist-a')).toBeVisible()
-  expect(api.previews[0]).toMatchObject({ image_format: 'webp' })
+  await expect(page.getByText(/筛除图片 1 张/)).toBeVisible()
+  expect(api.previews[0]).toMatchObject({ export_excluded: true, image_format: 'webp' })
   await page.screenshot({ path: 'test-results/r10-r1033-export-first-desktop-20260807-01.png' })
   await expect(page.getByRole('button', { name: '完成复核并创建导出' })).toBeEnabled()
   await page.getByRole('button', { name: '完成复核并创建导出' }).click()
   await expect.poll(() => api.creates.length).toBe(1)
-  expect(api.creates[0]).toMatchObject({ route: 'first', payload: { expected_gate: 'evidence_review', output_root: 'E:/first-new', image_format: 'webp', preview_digest: digest } })
+  expect(api.creates[0]).toMatchObject({ route: 'first', payload: { expected_gate: 'evidence_review', export_excluded: true, output_root: 'E:/first-new', image_format: 'webp', preview_digest: digest } })
   await expect(page.locator('.repeat-export-run').getByText('WebP', { exact: true })).toBeVisible()
+  await expect(page.locator('.repeat-export-run').getByText('已启用，原格式平铺到 _excluded')).toBeVisible()
+})
+
+test('first copy export optionally previews and exports excluded images', async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('dataset-audit-selected-task-v2', 'task-first'))
+  const api = await installApiMock(page)
+  await page.goto('/#exports')
+  await page.getByRole('button', { name: '稍后处理' }).click()
+  await expect(page.getByLabel('导出被筛除的图片', { exact: true })).not.toBeChecked()
+  await page.getByRole('textbox', { name: '导出目录', exact: true }).fill('E:/first-excluded')
+  await page.getByLabel('导出被筛除的图片', { exact: true }).check()
+  await page.getByRole('button', { name: '预览导出' }).click()
+  await expect(page.getByText(/筛除图片 1 张/)).toBeVisible()
+  expect(api.previews[0]).toMatchObject({ export_excluded: true })
+  await page.getByRole('button', { name: '完成复核并创建导出' }).click()
+  await expect.poll(() => api.creates.length).toBe(1)
+  expect(api.creates[0]).toMatchObject({ route: 'first', payload: { export_excluded: true } })
+})
+
+test('repeat copy export invalidates preview when excluded export is toggled', async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('dataset-audit-selected-task-v2', 'task-complete'))
+  const api = await installApiMock(page)
+  await page.goto('/#exports')
+  await page.getByRole('textbox', { name: '导出目录', exact: true }).fill('E:/repeat-excluded')
+  await page.getByRole('button', { name: '预览导出' }).click()
+  await expect(page.getByText('artist-a')).toBeVisible()
+  await expect(page.getByRole('button', { name: '创建重复导出' })).toBeEnabled()
+  await page.getByLabel('导出被筛除的图片', { exact: true }).check()
+  await expect(page.getByRole('button', { name: '创建重复导出' })).toBeDisabled()
+  await page.getByRole('button', { name: '预览导出' }).click()
+  await expect(page.getByText(/筛除图片 1 张/)).toBeVisible()
+  expect(api.previews.at(-1)).toMatchObject({ export_excluded: true })
+  await page.getByRole('button', { name: '创建重复导出' }).click()
+  expect(api.creates[0]).toMatchObject({ route: 'repeat', payload: { export_excluded: true } })
 })
 
 test('input changes invalidate preview and completed copy export uses the same form', async ({ page }) => {
@@ -154,10 +192,12 @@ test('input changes invalidate preview and completed copy export uses the same f
   await expect(page.getByText('artist-a')).toBeVisible()
   await page.getByLabel('最低分辨率', { exact: true }).selectOption('1024')
   await expect(page.getByRole('button', { name: '创建重复导出' })).toBeDisabled()
+  await page.getByLabel('导出被筛除的图片', { exact: true }).check()
   await page.getByRole('button', { name: '预览导出' }).click()
+  expect(api.previews.at(-1)).toMatchObject({ export_excluded: true })
   await page.getByRole('button', { name: '创建重复导出' }).click()
   await expect.poll(() => api.creates.length).toBe(1)
-  expect(api.creates[0]).toMatchObject({ route: 'repeat', payload: { minimum_resolution: 1024, preview_digest: digest } })
+  expect(api.creates[0]).toMatchObject({ route: 'repeat', payload: { export_excluded: true, minimum_resolution: 1024, preview_digest: digest } })
 })
 
 test('preview errors invalidate an earlier digest and keep creation disabled', async ({ page }) => {

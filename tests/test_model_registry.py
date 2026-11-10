@@ -12,9 +12,9 @@ from pydantic import ValidationError
 
 def test_default_registry_is_complete_pinned_and_code_free() -> None:
     registry = DEFAULT_REGISTRY
-    assert len(registry.all()) == 13
-    assert sum(model.total_size for model in registry.all()) == 11_877_569_054
-    assert registry.document.registry_version == "2026-08-10.1"
+    assert len(registry.all()) == 14
+    assert sum(model.total_size for model in registry.all()) == 12_502_700_418
+    assert registry.document.registry_version == "2026-10-29.1"
     assert len(registry.digest) == 64
 
     for model in registry.all():

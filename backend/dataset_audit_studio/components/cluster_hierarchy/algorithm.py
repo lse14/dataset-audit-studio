@@ -29,10 +29,11 @@ class CharacterScopeAssessment:
     reason: str
 
 
-CHARACTER_CONSISTENCY_ALGORITHM_VERSION = "siglip2_character_consistency_v1"
+CHARACTER_CONSISTENCY_ALGORITHM_VERSION = "siglip2_character_consistency_v2"
 _CHARACTER_MINIMUM_SCOPE_SIZE = 4
-_CHARACTER_OUTLIER_SIGMA = 2.04
+_CHARACTER_OUTLIER_SIGMA = 2.2
 _CHARACTER_MAX_ITERATIONS = 2
+_CHARACTER_MINIMUM_CENTROID_SIMILARITY = 0.72
 
 
 def character_consistency_config_payload() -> dict[str, int | float]:
@@ -40,6 +41,7 @@ def character_consistency_config_payload() -> dict[str, int | float]:
         "minimum_scope_size": _CHARACTER_MINIMUM_SCOPE_SIZE,
         "outlier_sigma": _CHARACTER_OUTLIER_SIGMA,
         "max_iterations": _CHARACTER_MAX_ITERATIONS,
+        "minimum_centroid_similarity": _CHARACTER_MINIMUM_CENTROID_SIMILARITY,
     }
 
 
@@ -141,7 +143,9 @@ def analyze_character_scope(
         reference.mean(dtype=np.float64)
         - _CHARACTER_OUTLIER_SIGMA * reference.std(dtype=np.float64)
     )
-    review = (~active) | (centroid_similarities < threshold - 1e-6)
+    below_scope_threshold = (~active) | (centroid_similarities < threshold - 1e-6)
+    below_absolute_floor = centroid_similarities < _CHARACTER_MINIMUM_CENTROID_SIMILARITY
+    review = below_scope_threshold & below_absolute_floor
     return tuple(
         CharacterScopeAssessment(
             sample_id=sample_id,

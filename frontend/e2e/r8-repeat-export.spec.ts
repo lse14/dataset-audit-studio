@@ -348,7 +348,7 @@ test('new task creation rejects style artist weights that do not sum to one', as
   await page.getByRole('textbox', { name: /输出目录/ }).fill('E:/output')
   await page.getByLabel('数据集配置', { exact: true }).selectOption('general')
   await page.getByRole('button', { name: /^画风分析/ }).click()
-  await page.getByLabel('LSNet 风格特征权重', { exact: true }).fill('0.2')
+  await page.getByLabel('画师风格特征权重', { exact: true }).fill('0.2')
   await page.getByLabel('纹理特征权重', { exact: true }).fill('0.2')
   await page.getByLabel('语义特征权重', { exact: true }).fill('0.2')
   await expect(page.getByText('画风三项权重总和必须等于 1')).toBeVisible()

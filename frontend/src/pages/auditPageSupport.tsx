@@ -16,9 +16,21 @@ export type AuditPageProps = {
   onChanged: () => Promise<void>
 }
 
+// Mutating curated endpoints only answer while the task sits in the confirmation window; outside it
+// the backend replies 409, so callers must gate on this before writing a decision.
+export function isCuratedConfirmationWindow(task: Task | null) {
+  return task?.status === 'evidence_review'
+    || (task?.status === 'paused' && task.resume_state === 'evidence_review')
+}
+
+// Reads stay open after completion so a finished run keeps showing the decisions it recorded; only
+// writes are confined to the window.
+export function canReadCuratedCandidates(task: Task | null) {
+  return isCuratedConfirmationWindow(task) || task?.status === 'completed'
+}
+
 export function canReclassifyWatermarkEvidence(task: Task) {
-  return task.status === 'evidence_review'
-    || (task.status === 'paused' && task.resume_state === 'evidence_review')
+  return isCuratedConfirmationWindow(task)
 }
 
 export function FolderScopeSelector({

@@ -1,5 +1,18 @@
 # Roadmap
 
+## 可选导出筛除图片（2026-11-08）
+
+- [x] 只读核查完成；用户确认首次/重复复制导出增加默认关闭的勾选项，筛除图片保持原格式、平铺到 `_excluded`，同名确定性加后缀。
+- [x] 首次/重复导出复用相同 bool 设置；预览返回筛除张数；快照、manifest、复制发布均记录筛除图；历史只在完成后显示实际筛除数。
+- [x] 筛除原图按平铺、确定性同名后缀和原字节校验计划；越界/损坏身份失败关闭；训练格式转换只作用于纳入图；不创建侧车标注或空目录。
+- [x] 保留缺失 `export_excluded` 的旧设置及快照的默认关闭语义，支持旧快照恢复。
+- [x] 项目虚拟环境导出回归、Ruff/组件边界检查、前端单测/构建和首次/重复导出 E2E 均通过；无依赖或数据库迁移。
+- [x] 已核实目标均属于项目 `.test-tmp` 后，仅清理本次生成的四个 `.test-tmp/excluded-export*` 目录；4174/7865 均无监听。
+
+验证：`tests/test_export_runs.py` 与 `tests/test_r10_3_2_first_export.py` 共 `95 passed`；前端 `146 passed`、生产构建通过；首次和重复导出新增 Playwright E2E `2 passed`；Ruff、组件导入边界、第三方依赖报告及 `git diff --check` 通过。
+
+边界：仅复制导出；只处理已有导出资格流程中的有效扫描图片，不将损坏/扫描失败文件当作可导出的图片。筛除区只复制原图片，不转换格式、不复制标注、不创建嵌套子目录。未勾选且全部筛除时保留原空导出错误；勾选但无筛除图片时无需创建空文件夹。不新增依赖或数据库迁移。
+
 ## 外部热补丁审查与合入（2026-08-23）
 
 - [x] 核对补丁包 SHA-256、包内逐文件 SHA-256、基线提交与声明的 8 个变更路径。
@@ -507,15 +520,20 @@ Restore the local WebUI startup after removing obsolete local runtime data and r
 ## 簇语义、目标覆盖与长尾选集（无限期暂缓）
 
 - [?] 无限期暂缓；无目标日期、无执行人、不得估时或随语义去重顺带实施。
-- [x] 企划已优化为 `层次簇 -> VLM 批量解释代表样本 -> 人工簇复核 -> 用户目标覆盖 -> 确定性选集建议 -> 人工确认 -> 覆盖复验 -> 导出快照`。
-- [x] 已记录现有 `leaf_coverage_order`、平方根配额和簇内多样选择基础；平方根配额只作为用户仅给总预算时的余量 fallback，不能覆盖显式目标。
-- [?] 只有用户明确恢复，并确认固定 VLM、用户目标模板、导出预算和独立验收集后，才能逐项重新设计和实施。
+- [x] K2 报告事实基线（仅设计参考）：`FAISS hierarchical k-means -> 对层次簇采样以保留 long-tail visual concepts -> VLM 查看各簇质心最近样本并命名/标记 -> 人工审核 flagged clusters 并移除确认的低质量或问题簇 -> 剩余叶簇内计算 SigLIP 相似度做语义去重`。依据：[Krea 2 Technical Report](https://www.krea.ai/blog/krea-2-technical-report)。报告另以 `Wikipedia PageRank -> Wikidata 可视觉化过滤 -> caption 全文检索 -> 稀有概念优先 -> 采样后覆盖复验` 保护可按名称调用的已知实体；报告没有公开具体层次采样配额公式或阈值。
+- [x] 本项目 K2 对齐边界：在每个配置 scope 内对图像向量建立 scope-local 层次簇；scope 划分和向量模型不是 K2 报告规定。簇是向量空间的语义分区，不是 e621 tag，不按 tag 建簇。同一 tag 可以跨多个簇，一个簇也可以包含多个 tag；VLM 只解释或标记簇，不替代原始 tag 命名。审核、去重和覆盖复验完成后，才生成需人工确认的导出快照。
+- [x] 长尾不是 e621 概念配额组件：它是 hierarchical k-means 之后、仅在启用压缩预算时使用的视觉采样目标，用来减少头部视觉簇的过采样并保留小型视觉簇；e621 tag 另行负责用户指定概念的覆盖复验。
+- [x] e621 适配边界：原始 e621 tags 作为图片到概念的直接映射；[e621 Tags](https://e621.net/help/tags)、[Tag Aliases](https://e621.net/tag_aliases) 与 [Tag Implications](https://e621.net/tag_implications) 只用于标签解释、规范化和覆盖统计。直接 tag 与 implication 推断必须分开，不把它们声称为 K2 caption 检索的完全等价物。
+- [x] 保留现有 `leaf_coverage_order`、平方根配额和簇内多样选择记录作为未来实现基础；它们不是 K2 报告宣称的固定公式，也没有生产调用，不能在暂缓期间改变导出结果。
+- [?] 目标概念清单和保底规则仍待定；恢复后必须先确认目标 tag 范围、固定 VLM、采样预算和独立验收集，不能默认所有 e621 tags 都是目标，也不能把用户明确要训练的目标概念按“头部概念”自动压低。
+- [?] e621 alias/implication 的规则快照、规范化生效时间、传递性推断和与人工目标/簇多样性的优先级仍待定。
+- [x] K2 与 e621 的职责分层：K2 只指导视觉/风格多样性、视觉长尾保留和簇内语义去重；不得从视觉簇稀有度、tag 频率或 tag 稀有度自动推导 e621 目标配额。
 
 ### 暂缓边界
 
-- 不实现 caption/PageRank/Wikidata 覆盖，不宣称基础模型级世界知识长尾。
+- 不复制 K2 的 Wikipedia PageRank、Wikidata 可视觉化过滤和 caption 全文检索流程；当前数据没有 caption，e621 tag 覆盖只针对已有领域标签，不宣称基础模型级世界知识长尾。
 - 不把 LoRA 目标角色或画风的高占比自动解释为需要压低的头部概念。
-- scope 固定为 artist/character 一级目录或 general 全局；不得跨 scope 借样本满足目标。覆盖键为 `scope -> dimension -> label`，不统计分辨率。
+- 层次聚类在当前配置的 scope 内对全量图像向量执行，不以 tag 作为聚类分区键；不得跨 scope 借样本满足目标。覆盖键为 `scope -> dimension -> label`，不统计分辨率。
 - 目标支持 `min/max count/share` 与 required/preferred；无法满足时报告 `unmet`，不得复制图片、静默降低目标或冒充 Krea 官方阈值。
 - 未来若恢复，只能生成可预览、可撤销、digest-bound 且需人工确认的新导出快照，不删除或改写原集合、人工决定或旧导出。
 

@@ -10,6 +10,7 @@ from dataset_audit_studio.runtime import (
 )
 
 
+@pytest.mark.requires_windows
 def test_current_test_process_is_isolated() -> None:
     assert_runtime_isolated()
 
@@ -20,5 +21,10 @@ def test_project_path_boundary() -> None:
 
 
 def test_require_project_path_rejects_parent() -> None:
+    outside = (
+        Path(PROJECT_ROOT.drive + "\\Windows")
+        if PROJECT_ROOT.drive
+        else PROJECT_ROOT.parent / "Windows"
+    )
     with pytest.raises(RuntimeIsolationError):
-        require_project_path(Path(PROJECT_ROOT.drive + "\\Windows"), "test path")
+        require_project_path(outside, "test path")

@@ -631,8 +631,9 @@ def test_character_profile_hierarchy_generates_role_review_candidates(
     assert len(evidence.metadata_json["embedding_identity_hash"]) == 64
     assert evidence.metadata_json["algorithm_config"] == {
         "minimum_scope_size": 4,
-        "outlier_sigma": 2.04,
+        "outlier_sigma": 2.2,
         "max_iterations": 2,
+        "minimum_centroid_similarity": 0.72,
     }
     assert len(evidence.metadata_json["algorithm_config_hash"]) == 64
     checkpoints = task_service.list_checkpoints(
@@ -773,6 +774,7 @@ def test_list_samples_does_not_build_a_sqlite_variable_sized_in_clause(
     assert len(samples) == len(inputs)
 
 
+@pytest.mark.requires_windows
 def test_coordinator_spawns_embedding_sae_and_hierarchy_separately(
     database: Database,
     task_service: TaskService,

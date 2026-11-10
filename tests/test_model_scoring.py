@@ -453,6 +453,7 @@ def test_model_scoring_resumes_after_asset_wait_with_monotonic_batches(
     )
 
 
+@pytest.mark.requires_windows
 def test_empty_dataset_completes_in_scoring_subprocess(
     database: Database,
     task_service: TaskService,

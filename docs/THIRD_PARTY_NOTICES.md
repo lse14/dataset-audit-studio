@@ -44,6 +44,7 @@ No model weight is bundled with the source tree. The local downloader installs o
 | DINOv2 Large | <https://huggingface.co/facebook/dinov2-large/tree/47b73eefe95e8d44ec3623f8890bd894b6ea2d6c> | Apache-2.0 |
 | TorchVision VGG19 IMAGENET1K_V1 | <https://download.pytorch.org/models/vgg19-dcbb9e9d.pth> | BSD-3-Clause |
 | Kaloscope v2 LSNet checkpoint | <https://huggingface.co/heathcliff01/Kaloscope2.0/tree/8d93704a0c260c23187f30f591c9e29c79807d44> | Apache-2.0 |
+| Kaloscope v3 DINOv3 ViT-B/16 artist features | <https://huggingface.co/heathcliff01/Kaloscope3.0-preview/tree/5e4bfa229619b7c459ec126283827373df9de564> | dinov3 |
 | Watermark Detection SigLIP2 | <https://huggingface.co/prithivMLmods/Watermark-Detection-SigLIP2/tree/ce32ed8fe48872dd7d15e1db2602a0d50ddceae0> | Apache-2.0 |
 | PP-OCRv5 server detection | <https://huggingface.co/PaddlePaddle/PP-OCRv5_server_det_safetensors/tree/cbea9f3c3254c6ff7b0016cfbf90549e1ad4c5bb> | Apache-2.0 |
 | PP-OCRv5 server recognition | <https://huggingface.co/PaddlePaddle/PP-OCRv5_server_rec_safetensors/tree/542979d7cc3791732bb12af35313a6840952d79f> | Apache-2.0 |
@@ -51,5 +52,7 @@ No model weight is bundled with the source tree. The local downloader installs o
 The vendored LSNet architecture under `backend/dataset_audit_studio/components/artist_style/_lsnet/` is derived from <https://github.com/spawner1145/comfyui-lsnet> commit `416d945e65b81ced93f1e762349d790ca92106b1`, licensed GPL-3.0. The project is distributed under GPL-3.0-only; the local PyTorch SKA fallback is a project modification of that architecture integration.
 
 Other repository source code is not part of a model installation. In particular, Hydra Python files and PP-OCR `ocr_pipeline.py` are excluded. The application uses only local, allowlisted adapters; `remote_code_allowed` is fixed to `false` for every registry entry. User-provided replacement weights remain subject to the user's own rights and license obligations.
+
+The Kaloscope v3 artist-feature checkpoint is distributed under the DINOv3 License (the Hub card records it as `license: other`, `license_name: dinov3`), not Apache-2.0 like its Kaloscope v2 predecessor. It is downloaded at runtime rather than bundled, and its 44,129-class artist classification head is not loaded or used by this project; only the DINOv3 ViT-B/16 backbone and the 256-dimension projection head are instantiated. Downstream redistribution or commercial use of those weights must satisfy the DINOv3 License terms.
 
 Redistribution must preserve the upstream license and notice files identified by `docs/THIRD_PARTY_DEPENDENCIES.json`. Model weights are downloaded separately and remain subject to their declared model licenses; custom weights remain subject to the user's own rights and obligations.

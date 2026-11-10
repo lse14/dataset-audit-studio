@@ -54,7 +54,12 @@ def build_ufd_transform():
 
 
 def load_pinned_clip_state_dict(path: Path) -> dict[str, torch.Tensor]:
-    scripted = torch.jit.load(str(path), map_location="cpu")
+    # torch.jit.load() hands the path to C++ fopen(), which resolves it through the process
+    # ANSI code page. A checkout under a non-ASCII folder name therefore fails with
+    # "open file failed because of errno 2" even though the file is there, so read through a
+    # handle, which the TorchScript reader accepts and which uses the wide-character API.
+    with path.open("rb") as handle:
+        scripted = torch.jit.load(handle, map_location="cpu")
     state_dict = dict(scripted.state_dict())
     for key in ("input_resolution", "context_length", "vocab_size"):
         state_dict.pop(key, None)

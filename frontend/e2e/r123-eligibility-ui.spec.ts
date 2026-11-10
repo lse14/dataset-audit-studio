@@ -158,12 +158,12 @@ async function installApiMock(page: Page) {
       const payload = request.postDataJSON() as { domain_minimum: number | null }
       previews.push(payload)
       if (payload.domain_minimum === 0.9) return json(route, { detail: 'domain proof unavailable' }, 409)
-      return json(route, { add_repeat_prefix: true, aesthetic_minimum: null, domain_minimum: payload.domain_minimum, exclude_exact_visual_duplicates: payload.exclude_exact_visual_duplicates, exclusion_counts: { aesthetic_below_minimum: 0, domain_below_minimum: 1, duplicate_representative: 1, style_outlier: 1 }, folders: [], included_count: 2, input_digest: digest, minimum_folder_images: 1, minimum_resolution: 512, preview_digest: digest, sample_seen_mode: 'off', sample_seen_target: null, style_outlier_mode: payload.style_outlier_mode, warnings: ['duplicate representative selected'] })
+      return json(route, { add_repeat_prefix: true, aesthetic_minimum: null, domain_minimum: payload.domain_minimum, exclude_exact_visual_duplicates: payload.exclude_exact_visual_duplicates, exclusion_counts: { aesthetic_below_minimum: 0, domain_below_minimum: 1, duplicate_non_representative: 1, style_outlier: 1 }, folders: [], included_count: 2, input_digest: digest, minimum_folder_images: 1, minimum_resolution: 512, preview_digest: digest, sample_seen_mode: 'off', sample_seen_target: null, style_outlier_mode: payload.style_outlier_mode, warnings: ['duplicate representative selected'] })
     }
     if (suffix === 'export-runs' && request.method() === 'POST') {
       const payload = request.postDataJSON() as Record<string, unknown>
       creates.push(payload)
-      const run = { add_repeat_prefix: true, aesthetic_identity: null, aesthetic_minimum: null, bytes_current: 0, bytes_total: null, checkpoint: {}, completed_at: null, config_hash: digest, created_at: timestamp, domain_minimum: payload.domain_minimum, error_code: null, error_message: null, exclude_exact_visual_duplicates: payload.exclude_exact_visual_duplicates, execution_epoch: 0, file_count: 0, id: 'run-1', input_digest: digest, manifest_path: null, manifest_sha256: null, minimum_folder_images: 1, minimum_resolution: 512, output_key: 'e:/new-output', output_root: 'E:/new-output', preview_digest: digest, progress_current: 0, progress_total: null, resolutions: [512], sample_seen_mode: 'off', sample_seen_target: null, selection_version: 1, settings: payload, started_at: null, status: 'queued', style_outlier_mode: payload.style_outlier_mode, summary: { exclusion_counts: { duplicate_representative: 1 }, included_count: 2, warnings: [] }, task_config_revision: 1, task_id: 'task-1', updated_at: timestamp }
+      const run = { add_repeat_prefix: true, aesthetic_identity: null, aesthetic_minimum: null, bytes_current: 0, bytes_total: null, checkpoint: {}, completed_at: null, config_hash: digest, created_at: timestamp, error_code: null, error_message: null, execution_epoch: 0, file_count: 0, id: 'run-1', input_digest: digest, manifest_path: null, manifest_sha256: null, minimum_folder_images: 1, minimum_resolution: 512, output_key: 'e:/new-output', output_root: 'E:/new-output', preview_digest: digest, progress_current: 0, progress_total: null, resolutions: [512], sample_seen_mode: 'off', sample_seen_target: null, selection_version: 1, settings: payload, started_at: null, status: 'queued', summary: { exclusion_counts: { duplicate_non_representative: 1 }, included_count: 2, warnings: [] }, task_config_revision: 1, task_id: 'task-1', updated_at: timestamp }
       runs.unshift(run)
       return json(route, run, 202)
     }
@@ -192,10 +192,15 @@ test('completed task switches every audit state, preserves full duplicate groups
   await expect.poll(() => api.requests.some((path) => path.includes('/reviews/style/audit?') && path.includes('decision=pending_review'))).toBe(true)
 
   await page.goto('/#risks')
+  // A completed task can still read its curated decisions, so the page enriches the risk list with
+  // the decision badges it recorded instead of dropping them.
   await page.getByRole('button', { name: '已保留' }).click()
+  await expect.poll(() => api.requests.some((path) => path.includes('/risk-samples?') && path.includes('decision=approved_keep'))).toBe(true)
+  await expect(page.getByText('risk-approved_keep.png', { exact: true })).toBeVisible()
   await expect.poll(() => api.requests.some((path) => path.includes('/reviews/curated?') && path.includes('evidence_type=risk') && path.includes('decision=approved_keep'))).toBe(true)
+  await expect(page.getByText('已保留', { exact: true }).first()).toBeVisible()
   await page.getByLabel('证据类型', { exact: true }).selectOption('watermark_probability')
-  await expect.poll(() => api.requests.some((path) => path.includes('reason_code=watermark_probability'))).toBe(true)
+  await expect.poll(() => api.requests.some((path) => path.includes('/risk-samples?') && path.includes('code=watermark_probability'))).toBe(true)
 
   await page.goto('/#duplicates')
   await page.getByRole('button', { name: '已排除' }).click()
@@ -264,13 +269,13 @@ test('copy export defaults to disabled eligibility filters, invalidates preview,
   await page.getByLabel('排除完全和视觉重复', { exact: true }).check()
   await page.getByLabel('画风离群筛选', { exact: true }).selectOption('all')
   await page.getByRole('button', { name: '预览导出' }).click()
-  await expect(page.getByText('duplicate_representative 1')).toBeVisible()
+  await expect(page.getByText('重复非代表 1')).toBeVisible()
   await page.getByRole('button', { name: '创建重复导出' }).click()
   await expect.poll(() => api.creates.length).toBe(1)
   expect(api.creates[0]).toMatchObject({ domain_minimum: 0.6, exclude_exact_visual_duplicates: true, style_outlier_mode: 'all', preview_digest: digest })
   await expect(page.getByText('筛除设置')).toBeVisible()
   await expect(page.getByText('目标域 0.6，重复 完全和视觉，画风 离群与强离群')).toBeVisible()
-  await expect(page.getByText('导出 2，duplicate_representative 1')).toBeVisible()
+  await expect(page.getByText('导出 2，重复非代表 1')).toBeVisible()
   await page.locator('.repeat-export-history').screenshot({ path: 'test-results/r12-r123-export-history-desktop.png' })
   await page.locator('.repeat-export-panel').scrollIntoViewIfNeeded()
   await page.screenshot({ path: 'test-results/r12-r123-export-desktop.png' })

@@ -23,7 +23,7 @@ import {
   StatusPill,
   Thumbnail,
 } from '../ui'
-import { type AuditPageProps, canReclassifyWatermarkEvidence, FolderScopeSelector, SelectionCheckbox } from './auditPageSupport'
+import { type AuditPageProps, canReadCuratedCandidates, canReclassifyWatermarkEvidence, FolderScopeSelector, SelectionCheckbox } from './auditPageSupport'
 
 export function RisksPage({ task, overview, folders, folder, onFolderChange, notify, onChanged }: AuditPageProps & { overview: TaskOverview | null }) {
   const [data, setData] = useState<RiskSampleList | null>(null)
@@ -74,6 +74,13 @@ export function RisksPage({ task, overview, folders, folder, onFolderChange, not
     setData(null)
     void listRiskSamples(task.id, { offset, limit, code, severity, folder, decision })
       .then(async (risks) => {
+        if (canceled) return
+        // The risk list itself is always readable; decision badges are an enrichment that only
+        // exists inside the confirmation window, so paint the list first and never let it fail.
+        setData(risks)
+        setDecisions(new Map())
+        setLoading(false)
+        if (!canReadCuratedCandidates(task)) return
         const sampleIds = risks.items.map((item) => item.sample_id)
         const activePages = await Promise.all(Array.from({ length: Math.ceil(sampleIds.length / 100) }, (_, index) => {
           const pageIds = sampleIds.slice(index * 100, (index + 1) * 100)
@@ -87,17 +94,16 @@ export function RisksPage({ task, overview, folders, folder, onFolderChange, not
               severity: severity || undefined,
               candidateGroup: undefined,
               sampleIds: pageIds,
-            })
+            }).catch(() => null)
         }))
         if (!canceled) {
-          setData(risks)
-          setDecisions(new Map(activePages.flatMap((page) => page.items.map((item) => [item.sample_id, item] as const))))
+          setDecisions(new Map(activePages.flatMap((page) => page?.items.map((item) => [item.sample_id, item] as const) ?? [])))
         }
       })
       .catch((reason: unknown) => { if (!canceled) setError(reason instanceof Error ? reason.message : '无法读取风险图片') })
       .finally(() => { if (!canceled) setLoading(false) })
     return () => { canceled = true }
-  }, [code, decision, folder, limit, offset, revision, severity, task?.id])
+  }, [code, decision, folder, limit, offset, revision, severity, task?.id, task?.resume_state, task?.status])
 
   useEffect(() => {
     if (!task || !detailSampleId) return
@@ -152,6 +158,9 @@ export function RisksPage({ task, overview, folders, folder, onFolderChange, not
     } finally { setBusy(false) }
   }
   const canReclassifyWatermark = task !== null && canReclassifyWatermarkEvidence(task)
+  // Decision badges are readable for finished tasks too; for any other status every row would
+  // otherwise claim to be pending review.
+  const inDecisionWindow = canReadCuratedCandidates(task)
 
   const reclassifyWatermarkEvidence = async () => {
     if (!task) return
@@ -233,7 +242,7 @@ export function RisksPage({ task, overview, folders, folder, onFolderChange, not
       {error ? <ErrorBlock message={error} /> : null}
       {loading && items.length === 0 ? <LoadingBlock label="正在读取风险图片" /> : null}
       {!loading && !error && data && items.length === 0 ? <EmptyState title="当前筛选没有风险证据" /> : null}
-      {items.length > 0 ? <section className="risk-list" inert={busy} ref={listParent}><div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>{virtualizer.getVirtualItems().map((row) => { const item = items[row.index]; const active = decisions.get(item.sample_id); return <article className="risk-row audit-row" key={item.sample_id} onClick={() => { setDetail(null); setDetailSampleId(item.sample_id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetail(null); setDetailSampleId(item.sample_id) } }} role="button" style={{ transform: `translateY(${row.start}px)` }} tabIndex={0}><span className="row-check" onClick={(event) => event.stopPropagation()}><input aria-label={`选择 ${item.relative_path}`} checked={selected.has(item.sample_id)} onChange={() => toggleSample(item.sample_id)} type="checkbox" /></span><Thumbnail alt={item.relative_path} onClick={() => setMediaSampleId(item.sample_id)} src={sampleThumbnailUrl(task.id, item.sample_id, 224)} /><div><strong title={item.relative_path}>{item.relative_path}</strong><span title={item.evidence_codes.join('、')}>{item.evidence_codes.join('、')}</span><small>{item.evidence_count.toLocaleString()} 条证据</small></div><span className={`severity ${item.highest_severity}`}>{item.highest_severity}</span><StatusPill value={active?.decision ?? 'pending_review'} /><Eye aria-label="查看证据" size={17} /></article> })}</div></section> : null}
+      {items.length > 0 ? <section className="risk-list" inert={busy} ref={listParent}><div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>{virtualizer.getVirtualItems().map((row) => { const item = items[row.index]; const active = decisions.get(item.sample_id); return <article className="risk-row audit-row" key={item.sample_id} onClick={() => { setDetail(null); setDetailSampleId(item.sample_id) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setDetail(null); setDetailSampleId(item.sample_id) } }} role="button" style={{ transform: `translateY(${row.start}px)` }} tabIndex={0}><span className="row-check" onClick={(event) => event.stopPropagation()}><input aria-label={`选择 ${item.relative_path}`} checked={selected.has(item.sample_id)} onChange={() => toggleSample(item.sample_id)} type="checkbox" /></span><Thumbnail alt={item.relative_path} onClick={() => setMediaSampleId(item.sample_id)} src={sampleThumbnailUrl(task.id, item.sample_id, 224)} /><div><strong title={item.relative_path}>{item.relative_path}</strong><span title={item.evidence_codes.join('、')}>{item.evidence_codes.join('、')}</span><small>{item.evidence_count.toLocaleString()} 条证据</small></div><span className={`severity ${item.highest_severity}`}>{item.highest_severity}</span>{inDecisionWindow ? <StatusPill value={active?.decision ?? 'pending_review'} /> : <span aria-hidden="true" />}<Eye aria-label="查看证据" size={17} /></article> })}</div></section> : null}
       <div inert={busy}><Pagination limit={limit} offset={offset} onChange={setOffset} total={data?.total ?? 0} /></div>
       <ConfirmDialog busy={busy} confirmLabel={confirm?.label ?? '确认'} danger={confirm?.danger} detail={`${scopeLabel}。本次${confirm?.label ?? '更新'}已选择的 ${(batchProgress?.total ?? selected.size).toLocaleString()} 张图片${allResultsSelected ? '，包含当前筛选下的其他页面' : ''}。操作可通过“已排除”筛选后批量保留来撤销。${batchProgress ? ` 已处理 ${batchProgress.done.toLocaleString()} / ${batchProgress.total.toLocaleString()}` : ''}`} onCancel={() => { if (!busy) setConfirm(null) }} onConfirm={() => void submitDecision()} open={confirm !== null} title="确认批量复核" />
       <ModalRiskDetail detail={detail} detailError={detailError} detailLoading={detailLoading} onClose={() => setDetailSampleId(null)} onOpenMedia={setMediaSampleId} open={detailSampleId !== null} taskId={task.id} />

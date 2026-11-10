@@ -89,6 +89,7 @@ export type ExportRunSettings = {
   sample_seen_mode: 'off' | 'auto' | 'manual'
   sample_seen_target: number | null
   image_format: ExportImageFormat
+  export_excluded: boolean
 }
 
 export type ExportRunCreateInput = ExportRunSettings & {
@@ -105,9 +106,6 @@ export type ExportRun = {
   output_key: string
   minimum_resolution: number
   resolutions: number[]
-  domain_minimum: number | null
-  exclude_exact_visual_duplicates: boolean
-  style_outlier_mode: 'off' | 'strong' | 'all'
   aesthetic_minimum: number | null
   minimum_folder_images: number
   add_repeat_prefix: boolean
@@ -157,6 +155,7 @@ export type ExportRunPreview = {
   preview_digest: string
   input_digest: string
   included_count: number
+  excluded_image_count: number
   exclusion_counts: Record<string, number>
   folder_below_minimum: Record<string, number>
   folders: Array<Record<string, unknown>>

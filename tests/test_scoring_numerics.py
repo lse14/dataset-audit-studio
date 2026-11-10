@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -90,6 +92,23 @@ def test_fusion_head_applies_reference_score_range_and_domain_logit() -> None:
     assert torch.allclose(torch.sigmoid(domain_logit), torch.sigmoid(torch.tensor([2.0])))
 
 
+def write_torchscript(module: torch.jit.ScriptModule, destination: Path) -> None:
+    """Serialise ``module`` to ``destination`` regardless of non-ASCII folder names.
+
+    ``torch.jit.save`` converts its argument with ``Path(str(path))`` internally and the
+    resulting parent lookup fails whenever a folder name is not representable in the
+    process ANSI code page, which is exactly the case for a checkout such as
+    ``E:\\Desktop\\idg\u6570\u636e\u96c6\\dataset-audit-studio`` on a CJK Windows locale. Writing
+    into a plain temporary folder and moving the bytes sidesteps that; loading the archive
+    back from the original location works normally, which is what the test asserts.
+    """
+
+    with tempfile.TemporaryDirectory() as staging:
+        staged = Path(staging) / "archive.pt"
+        module.save(str(staged))
+        destination.write_bytes(staged.read_bytes())
+
+
 def test_pinned_clip_torchscript_loads_without_pickle_fallback(tmp_path) -> None:
     class TinyArchive(torch.nn.Module):
         def __init__(self) -> None:
@@ -103,7 +122,7 @@ def test_pinned_clip_torchscript_loads_without_pickle_fallback(tmp_path) -> None
             return value * self.weight
 
     archive = tmp_path / "clip.pt"
-    torch.jit.trace(TinyArchive(), torch.ones(1)).save(str(archive))
+    write_torchscript(torch.jit.trace(TinyArchive(), torch.ones(1)), archive)
     state_dict = load_pinned_clip_state_dict(archive)
     assert set(state_dict) == {"weight"}
     assert torch.equal(state_dict["weight"], torch.tensor([2.0]))
