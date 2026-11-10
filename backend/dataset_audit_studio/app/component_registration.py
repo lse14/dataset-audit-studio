@@ -21,8 +21,6 @@ from dataset_audit_studio.components.cluster_hierarchy import DEFINITION as CLUS
 from dataset_audit_studio.components.cluster_hierarchy.config import HierarchyConfig
 from dataset_audit_studio.components.dataset_export import DEFINITION as DATASET_EXPORT
 from dataset_audit_studio.components.dataset_export.config import DatasetExportConfig
-from dataset_audit_studio.components.latent_resolver import DEFINITION as LATENT_RESOLVER
-from dataset_audit_studio.components.latent_resolver.config import LatentConfig
 from dataset_audit_studio.components.media_scan import DEFINITION as MEDIA_SCAN
 from dataset_audit_studio.components.ocr_evidence import DEFINITION as OCR_EVIDENCE
 from dataset_audit_studio.components.ocr_evidence.config import OCREvidenceConfig
@@ -103,11 +101,6 @@ class ReviewDecisionExecutionBinding:
 
 
 @dataclass(frozen=True)
-class LatentResolutionExecutionBinding:
-    pass
-
-
-@dataclass(frozen=True)
 class DatasetExportExecutionBinding:
     pass
 
@@ -119,7 +112,6 @@ BuiltinExecutionBinding: TypeAlias = (
     | StyleExecutionBinding
     | ClusteringExecutionBinding
     | ReviewDecisionExecutionBinding
-    | LatentResolutionExecutionBinding
     | DatasetExportExecutionBinding
 )
 
@@ -130,7 +122,6 @@ _BUILTIN_EXECUTION_BINDING_TYPES = (
     StyleExecutionBinding,
     ClusteringExecutionBinding,
     ReviewDecisionExecutionBinding,
-    LatentResolutionExecutionBinding,
     DatasetExportExecutionBinding,
 )
 
@@ -348,12 +339,6 @@ BUILTIN_COMPONENT_REGISTRATIONS: tuple[BuiltinComponentRegistration, ...] = (
         EmptyComponentConfig,
         ComponentUIContract("人工复核决定", "selection", "required", True),
         ReviewDecisionExecutionBinding(),
-    ),
-    BuiltinComponentRegistration(
-        LATENT_RESOLVER,
-        LatentConfig,
-        ComponentUIContract("Latent 复用", "output", "optional", True),
-        LatentResolutionExecutionBinding(),
     ),
     BuiltinComponentRegistration(
         DATASET_EXPORT,

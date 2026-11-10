@@ -12,7 +12,6 @@ CORE_FORBIDDEN_PREFIXES = (
     f"{PACKAGE}.app",
     f"{PACKAGE}.clustering",
     f"{PACKAGE}.export",
-    f"{PACKAGE}.latent",
     f"{PACKAGE}.metrics",
     f"{PACKAGE}.reviews",
     f"{PACKAGE}.scanner",

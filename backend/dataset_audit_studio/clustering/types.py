@@ -100,7 +100,6 @@ class SelectionSample:
     source_sha256: str
     phash: str | None
     colorhash: str | None
-    latent_count: int
     aesthetic_score: float | None
     domain_pass: bool
     ai_excluded: bool

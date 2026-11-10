@@ -90,7 +90,6 @@ PROFILE_DEFAULT_DISABLED_COMPONENT_IDS = (
     "analysis.sae",
     "embedding.semantic",
     "cluster.hierarchy",
-    "latent.resolve",
 )
 
 

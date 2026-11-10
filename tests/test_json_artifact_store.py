@@ -91,17 +91,17 @@ def test_json_artifact_replacement_invalidates_old_reference(tmp_path: Path) -> 
     task_id = "00000000-0000-0000-0000-000000000001"
     first = store.write(
         task_id=task_id,
-        producer_id="latent.resolve",
-        kind="latent_reference",
+        producer_id="analysis.test",
+        kind="test_reference",
         cache_key="b" * 64,
-        payload={"schema": "latent.reference.v1", "datasets": []},
+        payload={"schema": "test.reference.v1", "datasets": []},
     )
     second = store.write(
         task_id=task_id,
-        producer_id="latent.resolve",
-        kind="latent_reference",
+        producer_id="analysis.test",
+        kind="test_reference",
         cache_key="b" * 64,
-        payload={"schema": "latent.reference.v1", "datasets": [{"stage": 1}]},
+        payload={"schema": "test.reference.v1", "datasets": [{"stage": 1}]},
     )
     assert first.relative_path == second.relative_path
     assert first.sha256 != second.sha256

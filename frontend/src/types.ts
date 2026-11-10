@@ -160,6 +160,7 @@ export type ExportRunPreview = {
   folder_below_minimum: Record<string, number>
   folders: Array<Record<string, unknown>>
   warnings: string[]
+  settings?: Record<string, JsonValue>
 }
 
 export type TaskDeleteResult = {

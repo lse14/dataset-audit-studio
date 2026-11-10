@@ -93,7 +93,6 @@ class DatasetExporter:
                 session,
                 task,
                 retained,
-                keep_latent=config.keep_latent_files,
                 keep_annotation=config.keep_annotation_files,
             )
         input_digest = workspace_digest(workspace)
@@ -156,7 +155,7 @@ class DatasetExporter:
             if isinstance(backup_path, str):
                 restore_backup(source_root, task.id, Path(backup_path))
             raise
-        plan = ExportPlan(files=(), datasets=(), latent_records=(), input_digest=input_digest)
+        plan = ExportPlan(files=(), datasets=(), input_digest=input_digest)
         if status != TaskStatus.EXPORTING.value:
             return self._summary(task.id, plan, status)
         if not finalize_phase:

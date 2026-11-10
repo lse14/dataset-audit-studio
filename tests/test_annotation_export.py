@@ -106,7 +106,6 @@ def test_export_plan_counts_a_duplicate_selected_image_once(tmp_path: Path) -> N
             datasets=(DatasetSlice(stage=1, resolution=512, sample_ids=(sample.sample_id,) * 2),),
         ),
         source_root=source_root,
-        latents=None,
         keep_annotation_files=False,
     )
 

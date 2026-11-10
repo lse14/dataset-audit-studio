@@ -61,7 +61,6 @@ ARCHITECTURE_PACKAGES = (
     "export",
     "export_runs",
     "jobs",
-    "latent",
     "main",
     "metrics",
     "model_adapters",
@@ -854,8 +853,6 @@ def test_workspace_file_access_has_single_filesystem_owner() -> None:
     for module_name, symbol in (
         ("PIL", "Image"),
         ("PIL", "ImageOps"),
-        ("dataset_audit_studio.latent.common", "source_is_unchanged"),
-        ("dataset_audit_studio.latent.types", "LatentSample"),
     ):
         node = imported_from(module_name, symbol)
         if node is not None:

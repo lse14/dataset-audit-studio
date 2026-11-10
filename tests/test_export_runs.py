@@ -71,11 +71,13 @@ def _completed_profile_task(
     resolutions: tuple[int, ...] = (512, 1024),
     image_bytes: bytes = b"export-run-source",
     caption: str | None = None,
+    keep_annotation_files: bool = True,
 ):
     source = tmp_path / "source"
     source.mkdir()
     components = materialize_profile("general")["components"]
     components["media.scan"]["config"]["resolutions"] = list(resolutions)
+    components["export.dataset"]["config"]["keep_annotation_files"] = keep_annotation_files
     config = ComponentTaskConfigMaterializer().materialize(
         components, profile="general", require_profile=True
     )
@@ -2759,11 +2761,14 @@ def test_export_run_resume_is_idempotent_when_staging_ahead_of_checkpoint(
     assert (output / "1_source" / "sample.txt").read_text(encoding="utf-8") == "resume caption"
 
 
+@pytest.mark.parametrize("keep_annotations", (True, False))
 @pytest.mark.parametrize("export_excluded", (False, True))
 def test_optional_excluded_export_is_flat_and_keeps_every_original(
-    export_excluded, database, task_service, tmp_path
+    export_excluded, keep_annotations, database, task_service, tmp_path
 ) -> None:
-    task = _completed_profile_task(database, task_service, tmp_path)
+    task = _completed_profile_task(
+        database, task_service, tmp_path, keep_annotation_files=keep_annotations
+    )
     source = Path(task.source_root)
     _add_sample_at(database, task, source, "keep-second", "keep.png")
     rejected = {
@@ -2774,7 +2779,7 @@ def test_optional_excluded_export_is_flat_and_keeps_every_original(
     }
     for sample_id, relative in rejected.items():
         _add_sample_at(database, task, source, sample_id, relative)
-        (source / relative).with_suffix(".txt").write_text("excluded caption", encoding="utf-8")
+        (source / relative).with_suffix(".txt").write_text(f"caption {sample_id}", encoding="utf-8")
     # Two distinct samples have identical bytes; flattening must preserve both.
     identical = source / rejected["manual-b"]
     identical.write_bytes((source / rejected["low-a"]).read_bytes())
@@ -2810,6 +2815,7 @@ def test_optional_excluded_export_is_flat_and_keeps_every_original(
     assert preview.exclusion_counts["manual_exclude"] == 1
     assert preview.exclusion_counts["folder_below_minimum"] == 1
     assert preview.excluded_image_count == (4 if export_excluded else 0)
+    assert preview.settings["keep_annotation_files"] is keep_annotations
     run = service.create(task.id, preview_digest=preview.preview_digest, **settings)
     assert run.settings["export_excluded"] is export_excluded
     snapshot_plan = ExportRunPlanner(database).build(run.id)
@@ -2826,15 +2832,43 @@ def test_optional_excluded_export_is_flat_and_keeps_every_original(
     ]
     if export_excluded:
         exported = list((output / "_excluded").iterdir())
-        assert len(exported) == 4
         assert all(path.is_file() for path in exported)
-        assert len({path.name.casefold() for path in exported}) == 4
-        assert sorted(path.read_bytes() for path in exported) == sorted(
+        images = [path for path in exported if path.suffix != ".txt"]
+        captions = {path.stem: path for path in exported if path.suffix == ".txt"}
+        assert len(images) == 4
+        assert len({path.name.casefold() for path in images}) == 4
+        assert sorted(path.read_bytes() for path in images) == sorted(
             (source / relative).read_bytes() for relative in rejected.values()
         )
         manifest = json.loads((output / "export-run-manifest.json").read_text())
         assert manifest["summary"]["excluded_image_count"] == 4
         assert sum(item["kind"] == "excluded_image" for item in manifest["files"]) == 4
+        if keep_annotations:
+            # Each sidecar keeps the deduplicated flattened image stem and its own text.
+            assert sorted(path.name for path in images) == [
+                "SHARED_2.png", "only.webp", "shared.png", "shared_2_2.png",
+            ]
+            assert set(captions) == {path.stem for path in images}
+            by_bytes = {
+                (source / relative).read_bytes(): sample_id
+                for sample_id, relative in rejected.items()
+            }
+            for image in images:
+                sample_id = by_bytes[image.read_bytes()]
+                if sample_id in {"low-a", "manual-b"}:
+                    # Identical image bytes; the caption still pairs with its own path.
+                    sample_id = "low-a" if image.name == "shared.png" else "manual-b"
+                assert captions[image.stem].read_text(encoding="utf-8") == f"caption {sample_id}"
+            assert {
+                item["path"]
+                for item in manifest["files"]
+                if item["path"].startswith("_excluded/") and item["path"].endswith(".txt")
+            } == {f"_excluded/{stem}.txt" for stem in captions}
+        else:
+            assert sorted(path.name for path in images) == [
+                "SHARED_2.png", "only.webp", "shared.png", "shared_2_2.png",
+            ]
+            assert captions == {}
     else:
         assert not (output / "_excluded").exists()
     assert all((source / relative).exists() for relative in rejected.values())
@@ -2867,6 +2901,28 @@ def test_excluded_export_preserves_original_while_training_images_are_converted(
     with Image.open(output / "1_source/sample.webp") as image:
         assert image.format == "WEBP"
     assert ExportRunPlanner(database).build(run.id).summary["included_count"] == 1
+
+
+def test_excluded_export_sidecar_changes_fail_verification(
+    database, task_service, tmp_path
+) -> None:
+    task = _completed_profile_task(database, task_service, tmp_path)
+    source = Path(task.source_root)
+    _add_sample_at(database, task, source, "rejected-caption", "nested/rejected.png")
+    caption = source / "nested/rejected.txt"
+    caption.write_text("planned caption", encoding="utf-8")
+    with database.write_session() as session:
+        session.get(Sample, "rejected-caption").display_width = 1
+    output = tmp_path / "excluded-caption-changed"
+    output.mkdir()
+    _export_run_service()(database).create(
+        task.id, output_root=str(output), minimum_resolution=512, export_excluded=True,
+    )
+    caption.write_text("edited after planning", encoding="utf-8")
+    claimed = task_service.claim_next(owner="excluded-caption-changed", lease_seconds=60)
+    completed = _export_run_executor()(database).run(claimed.token)
+    assert completed.status == "failed"
+    assert not (output / "_excluded/rejected.txt").exists()
 
 
 def test_excluded_export_allows_only_rejected_images(database, task_service, tmp_path) -> None:
@@ -2935,6 +2991,38 @@ def test_legacy_snapshot_without_excluded_setting_still_executes(
         row = session.get(models.ExportRun, run.id)
         assert "export_excluded" not in row.settings_json
         assert "export_excluded" not in row.input_snapshot_json["settings"]
+
+
+def test_legacy_task_config_with_retired_latent_settings_still_exports(
+    database, task_service, tmp_path
+) -> None:
+    task = _completed_profile_task(database, task_service, tmp_path, caption="legacy caption")
+    with database.write_session() as session:
+        row = session.scalar(select(models.TaskConfig).where(models.TaskConfig.task_id == task.id))
+        legacy = copy.deepcopy(row.config_json)
+        legacy["components"]["latent.resolve"] = {
+            "enabled": False,
+            "config": {"mikazuki_enabled": True, "single_file_rules": []},
+        }
+        legacy["components"]["export.dataset"]["config"]["keep_latent_files"] = True
+        legacy["export"]["keep_latent_files"] = True
+        legacy["latent"] = {"mikazuki_enabled": False, "single_file_rules": []}
+        # Stored rows keep their original hash; only the payload carries retired fields.
+        row.config_json = legacy
+    Path(task.source_root, "sample.npz").write_bytes(b"legacy latent")
+    output = tmp_path / "legacy-latent-config"
+    output.mkdir()
+    _export_run_service()(database).create(
+        task.id, output_root=str(output), minimum_resolution=512
+    )
+    claimed = task_service.claim_next(owner="legacy-latent-config", lease_seconds=60)
+    completed = _export_run_executor()(database).run(claimed.token)
+    assert completed.status == "completed", completed.error_message
+    assert (output / "1_source/sample.txt").read_text(encoding="utf-8") == "legacy caption"
+    assert not (output / "1_source/sample.npz").exists()
+    materialized = ComponentTaskConfigMaterializer().materialize_task_config(legacy)
+    assert "latent.resolve" not in materialized["components"]
+    assert "keep_latent_files" not in materialized["export"]
 
 
 def test_excluded_export_detects_original_changes(database, task_service, tmp_path) -> None:

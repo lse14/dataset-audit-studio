@@ -38,7 +38,6 @@ def test_export_tree_publisher_stages_verifies_and_atomically_publishes(
     plan = ExportPlan(
         files=(source_file, content_file),
         datasets=(),
-        latent_records=(),
         input_digest="test-input",
     )
     output_root = tmp_path / "output"

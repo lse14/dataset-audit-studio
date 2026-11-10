@@ -1,6 +1,8 @@
 # Rules
 
 - 可选筛除图片导出默认关闭，仅在新复制导出中将本次资格筛选和文件夹数量筛选排除的有效图片按原始字节平铺到 `_excluded`；不得修改源数据、人工决定或纳入计数，不得因同名或相同内容丢图片，不得将筛除图片混入训练目录。
+- 筛除区是否附带同名标注必须与任务的「保留同名标注文件」主选项一致，侧车文件名与平铺去重后的图片同主干。
+- 导出不再附带或处理 latent 缓存；旧配置中的 `latent.resolve` 与 `keep_latent_files` 只可忽略，不得因此报错。
 
 - Keep changes limited to restoring the local WebUI and checking related scripts.
 - Use only project-local Python, Node, package caches, models, and generated output.

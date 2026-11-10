@@ -4,8 +4,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from dataset_audit_studio.core.dataset_artifacts import LatentRecordReference
-
 
 @dataclass(frozen=True)
 class PlannedFile:
@@ -64,7 +62,6 @@ class AestheticBinPlan:
 class ExportPlan:
     files: tuple[PlannedFile, ...]
     datasets: tuple[DatasetSummary, ...]
-    latent_records: tuple[LatentRecordReference, ...]
     input_digest: str
     aesthetic_bin_plan: AestheticBinPlan | None = None
 

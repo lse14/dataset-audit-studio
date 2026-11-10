@@ -409,7 +409,6 @@ class ExportRunExecutor:
                     )
                 ),
                 datasets=(),
-                latent_records=(),
                 input_digest=run.input_digest or "",
             ),
             summary,
@@ -546,7 +545,6 @@ class ExportRunExecutor:
             ExportPlan(
                 files=files,
                 datasets=planned.plan.datasets,
-                latent_records=planned.plan.latent_records,
                 input_digest=planned.plan.input_digest,
                 aesthetic_bin_plan=planned.plan.aesthetic_bin_plan,
             ),

@@ -11,7 +11,6 @@ function profileComponents(profile: ProfileId) {
       config: {
         aesthetic_bins: 'disabled',
         keep_annotation_files: true,
-        keep_latent_files: true,
       },
       enabled: true,
     },
@@ -93,7 +92,6 @@ const manifests = [
     default_config: {
       aesthetic_bins: 'disabled',
       keep_annotation_files: true,
-      keep_latent_files: true,
     },
     default_enabled: true,
     display_name: '数据集导出',
@@ -104,7 +102,6 @@ const manifests = [
       properties: {
         aesthetic_bins: { enum: ['disabled', 'score_x2_floor'], type: 'string' },
         keep_annotation_files: { type: 'boolean' },
-        keep_latent_files: { type: 'boolean' },
       },
       type: 'object',
     },
@@ -131,7 +128,6 @@ const overview = {
   cluster_nodes: 1,
   evidence_codes: [],
   exports: [],
-  latent_entries: 0,
   leaf_clusters: 1,
   ready_artifacts: 1,
   review_counts: [],

@@ -62,7 +62,6 @@ class ExportRepository(DatasetWorkspaceRepository):
         task,
         retained_sample_ids: set[str],
         *,
-        keep_latent: bool,
         keep_annotation: bool,
     ) -> tuple[Path, ...]:
         source_root = Path(task.source_root).resolve(strict=True)
@@ -73,15 +72,6 @@ class ExportRepository(DatasetWorkspaceRepository):
             image = source_root.joinpath(*Path(sample.relative_path).parts).resolve(strict=True)
             image.relative_to(source_root)
             paths.append(image)
-            if not keep_latent:
-                paths.extend(
-                    path
-                    for path in (
-                        image.with_suffix(".npz"),
-                        image.with_suffix(".safetensors"),
-                    )
-                    if path.is_file()
-                )
         if not keep_annotation:
             for sample in excluded:
                 image = source_root.joinpath(*Path(sample.relative_path).parts).resolve(strict=True)

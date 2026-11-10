@@ -23,9 +23,6 @@ from dataset_audit_studio.database.models import ComponentRun
 from dataset_audit_studio.database.session import Database
 from dataset_audit_studio.export.config import ExportConfig
 from dataset_audit_studio.jobs.service import TaskService
-from dataset_audit_studio.latent.config import LatentConfig
-from dataset_audit_studio.latent.mikazuki import plan_mikazuki_namespace
-from dataset_audit_studio.latent.types import LatentSample
 from dataset_audit_studio.scanner.config import ScanConfig
 from dataset_audit_studio.scanner.discovery import (
     MEDIA_EXTENSIONS,
@@ -346,7 +343,6 @@ def audit_legacy_compatibility(args: argparse.Namespace) -> int:
             ClusteringConfig.from_task_config(task.config)
             SelectionConfig.from_task_config(task.config)
             CaptionConfig.from_task_config(task.config)
-            LatentConfig.from_task_config(task.config)
             ExportConfig.from_task_config(task.config)
             normalized = COMPONENT_REGISTRY.normalize_task_config(task.config)
             resolved = COMPONENT_REGISTRY.resolve_task_config(task.config)
@@ -638,32 +634,7 @@ def audit_reference(args: argparse.Namespace) -> int:
         for item in discovery.items
         if item.absolute_path.suffix.casefold() in MEDIA_EXTENSIONS
     )
-    samples = []
-    paired_json = 0
-    for item in images:
-        digest = before.identities[item.relative_path][2]
-        if item.json_path is not None:
-            paired_json += 1
-        samples.append(
-            LatentSample(
-                sample_id=item.relative_path,
-                relative_path=item.relative_path,
-                source_path=item.absolute_path,
-                source_size=item.source_size,
-                source_mtime_ns=item.source_mtime_ns,
-                source_sha256=digest,
-                export_requires_render=False,
-            )
-        )
-    plan = plan_mikazuki_namespace(
-        source,
-        tuple(samples),
-        namespace=args.namespace,
-        verified_sample_ids=frozenset(item.sample_id for item in samples),
-    )
-    catalog_entries = 0
-    if plan.catalogs:
-        catalog_entries = int(json.loads(plan.catalogs[0].content)["entry_count"])
+    paired_json = sum(item.json_path is not None for item in images)
     after = _snapshot_tree(source)
     unchanged = before.identities == after.identities
     report = {
@@ -683,12 +654,6 @@ def audit_reference(args: argparse.Namespace) -> int:
             "orphan_captions": discovery.orphan_caption_count,
             "pairing_collisions": sum(item.pairing_collision for item in images),
         },
-        "latents": {
-            "records": len(plan.records),
-            "copy_files": len(plan.copies),
-            "catalogs": len(plan.catalogs),
-            "catalog_entries": catalog_entries,
-        },
     }
     _write_report(Path(args.report), report)
     expected = args.expected_images
@@ -697,11 +662,6 @@ def audit_reference(args: argparse.Namespace) -> int:
     if len(images) != expected or paired_json != expected:
         raise RuntimeError(
             f"Reference counts differ: images={len(images)}, paired_json={paired_json}"
-        )
-    if len(plan.records) != expected or catalog_entries != expected:
-        raise RuntimeError(
-            f"Reference latent counts differ: records={len(plan.records)}, "
-            f"catalog_entries={catalog_entries}"
         )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
@@ -1105,7 +1065,6 @@ def build_parser() -> argparse.ArgumentParser:
     # and a default carried over from one particular reference directory would silently
     # pass or fail against any other one.
     reference.add_argument("--expected-images", type=int, required=True)
-    reference.add_argument("--namespace", default="anima")
     reference.set_defaults(handler=audit_reference)
 
     fixture = subparsers.add_parser("prepare-benchmark")

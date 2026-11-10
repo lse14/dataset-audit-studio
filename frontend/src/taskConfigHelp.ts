@@ -64,10 +64,6 @@ const SCHEMA_FIELD_HELP: Record<string, string> = {
   maximum_ratio: '从同一候选集合中最多保留的比例。',
   technical_strictness: '技术风险筛选的严格程度。',
   keep_annotation_files: '导出时保留与图片同名的 TXT 和 JSON 标注文件。',
-  keep_latent_files: '导出时保留可用的 Latent 缓存文件。',
-  mikazuki_enabled: '允许复用 Mikazuki 生成的缓存。',
-  mikazuki_namespaces: '允许读取的 Mikazuki 缓存命名空间列表。',
-  single_file_rules: '单文件 Latent 缓存的匹配规则。',
   name: '规则名称，用于区分多条缓存匹配规则。',
   pattern: '用于匹配文件名或路径的规则表达式。',
   cache_kind: '匹配到的缓存类型。',
@@ -87,7 +83,6 @@ const COMPONENT_HELP: Record<string, string> = {
   'analysis.sae': '训练并分析稀疏特征，辅助复核风格和语义模式。',
   'cluster.hierarchy': '按语义向量建立可浏览的分层聚类结果。',
   'review.decisions': '保存人工复核决定并将其纳入后续导出选择。',
-  'latent.resolve': '查找并复用已有 Latent 缓存，减少重复计算。',
   'export.dataset': '按已确认的筛选规则复制入选数据集文件到输出目录。',
 }
 

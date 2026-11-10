@@ -33,7 +33,6 @@ const overview = {
   cluster_nodes: 3,
   evidence_codes: [],
   exports: [],
-  latent_entries: 6,
   leaf_clusters: 4,
   ready_artifacts: 1,
   review_counts: [],

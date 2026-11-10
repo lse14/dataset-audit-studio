@@ -54,7 +54,6 @@ from dataset_audit_studio.export_runs.service import ExportRunService
 from dataset_audit_studio.jobs.errors import LegacyTaskConfigUnsupported
 from dataset_audit_studio.jobs.profile import has_builtin_profile
 from dataset_audit_studio.jobs.service import TaskService
-from dataset_audit_studio.latent.config import LatentConfig
 from dataset_audit_studio.scanner.config import ScanConfig
 from dataset_audit_studio.scanner.discovery import (
     SourceLayoutError,
@@ -239,7 +238,6 @@ def _validate_scan_config(config: dict) -> None:
     ScoringConfig.from_task_config(config)
     style = StyleConfig.from_task_config(config)
     clustering = ClusteringConfig.from_task_config(config)
-    LatentConfig.from_task_config(config)
     ExportConfig.from_task_config(config)
     components = config.get("components")
     if not isinstance(components, dict):
@@ -595,7 +593,6 @@ def preview_rewrite(task_id: str, request: Request) -> dict[str, object]:
             session,
             task,
             retained,
-            keep_latent=export_config.keep_latent_files,
             keep_annotation=export_config.keep_annotation_files,
         )
     digest = rewrite_preview_digest(

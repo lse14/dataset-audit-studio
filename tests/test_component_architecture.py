@@ -27,7 +27,8 @@ def test_component_import_boundaries_are_clean() -> None:
 def test_builtin_registry_and_public_configuration_catalog_are_complete() -> None:
     registry = build_component_registry()
     component_ids = {definition.manifest.id for definition in registry.definitions}
-    assert len(component_ids) == 14
+    assert len(component_ids) == 13
+    assert "latent.resolve" not in component_ids
     assert component_ids == set(CONFIG_MODELS) == set(UI_CONTRACTS)
     legacy_prefix = "caption" + "."
     assert not [
@@ -77,7 +78,7 @@ def test_builtin_registration_catalog_derives_all_component_catalogs() -> None:
     assert catalog.component_ids == tuple(
         definition.manifest.id for definition in build_component_registry().definitions
     )
-    assert len(catalog.component_ids) == 14
+    assert len(catalog.component_ids) == 13
     assert set(catalog.component_ids) == set(catalog.config_models)
     assert set(catalog.component_ids) == set(catalog.ui_contracts)
     assert set(catalog.component_ids) == set(catalog.phase_by_component)

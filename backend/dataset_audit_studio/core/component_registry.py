@@ -11,6 +11,9 @@ from dataset_audit_studio.core.component_contracts import (
     ResolvedComponent,
 )
 
+# Removed components that may still appear in stored task configs and presets.
+RETIRED_COMPONENT_IDS = frozenset({"latent.resolve"})
+
 
 class ComponentRegistryError(ValueError):
     pass
@@ -75,7 +78,7 @@ class ComponentRegistry:
         if not isinstance(raw_components, Mapping):
             raise ComponentRegistryError("components config must be an object")
         expected = set(self._definitions)
-        supplied = set(raw_components)
+        supplied = set(raw_components) - RETIRED_COMPONENT_IDS
         unknown = sorted(supplied - expected)
         missing = sorted(expected - supplied)
         if unknown:

@@ -9,7 +9,10 @@ from dataset_audit_studio.app.component_registration import (
     BUILTIN_COMPONENT_REGISTRATION_CATALOG,
 )
 from dataset_audit_studio.components.ai_detection.config import UFD_MODEL_ID
-from dataset_audit_studio.core.component_registry import ComponentRegistry
+from dataset_audit_studio.core.component_registry import (
+    RETIRED_COMPONENT_IDS,
+    ComponentRegistry,
+)
 from dataset_audit_studio.core.profile_contracts import (
     DatasetProfile,
     resolve_dataset_profile,
@@ -32,6 +35,12 @@ class ComponentTaskConfigMaterializer:
         profile: DatasetProfile | str | None = None,
         require_profile: bool = False,
     ) -> dict[str, Any]:
+        # Stored configs and presets may still carry retired components; ignore them.
+        raw_components = {
+            component_id: raw
+            for component_id, raw in raw_components.items()
+            if component_id not in RETIRED_COMPONENT_IDS
+        }
         expected = {item.manifest.id for item in self.registry.definitions}
         supplied = set(raw_components)
         unknown = sorted(supplied - expected)
@@ -88,9 +97,6 @@ class ComponentTaskConfigMaterializer:
                 validated["enabled"] = enabled
             components[component_id] = {"enabled": enabled, "config": validated}
 
-        if self._config(components, "export.dataset")["mode"] == "copy":
-            components["latent.resolve"]["enabled"] = False
-
         normalized_container = {"components": components}
         resolved = self.registry.resolve_task_config(normalized_container)
         effective_ids = {item.definition.manifest.id for item in resolved}
@@ -111,7 +117,6 @@ class ComponentTaskConfigMaterializer:
                 effective_ids,
                 profile=resolved_profile,
             ),
-            "latent": self._latent_config(components, effective_ids),
             "export": copy.deepcopy(self._config(components, "export.dataset")),
         }
 
@@ -313,14 +318,3 @@ class ComponentTaskConfigMaterializer:
             "semantic_duplicate_threshold": hierarchy["semantic_duplicate_threshold"],
             "sae": sae,
         }
-
-    def _latent_config(
-        self,
-        components: Mapping[str, Any],
-        effective_ids: set[str],
-    ) -> dict[str, Any]:
-        config = copy.deepcopy(self._config(components, "latent.resolve"))
-        if "latent.resolve" not in effective_ids:
-            config["mikazuki_enabled"] = False
-            config["single_file_rules"] = []
-        return config

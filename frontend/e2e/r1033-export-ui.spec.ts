@@ -69,7 +69,7 @@ function run(id: string, taskId: string, outputRoot: string, status = 'queued') 
   }
 }
 
-async function installApiMock(page: Page) {
+async function installApiMock(page: Page, { keepAnnotations = true }: { keepAnnotations?: boolean } = {}) {
   const tasks = [task('task-first', 'evidence_review'), task('task-complete', 'completed')]
   const runs: Record<string, ReturnType<typeof run>[]> = { 'task-first': [], 'task-complete': [] }
   const previews: unknown[] = []
@@ -102,13 +102,13 @@ async function installApiMock(page: Page) {
         failNextPreview = false
         return json(route, { detail: 'preview stale' }, 409)
       }
-      return json(route, { task_id: current.id, minimum_resolution: 768, aesthetic_minimum: null, minimum_folder_images: 1, add_repeat_prefix: true, sample_seen_mode: 'off', sample_seen_target: null, preview_digest: digest, input_digest: digest, included_count: 2, excluded_image_count: payload.export_excluded ? 1 : 0, exclusion_counts: { manual_exclude: 1 }, folder_below_minimum: { folder_count: 0, image_count: 0 }, folders: [{ source_identifier: 'artist-a', output_name: 'artist-a', image_count: 2, excluded: false, warning_codes: [] }], warnings: ['repeat_approximate'] })
+      return json(route, { task_id: current.id, minimum_resolution: 768, aesthetic_minimum: null, minimum_folder_images: 1, add_repeat_prefix: true, sample_seen_mode: 'off', sample_seen_target: null, preview_digest: digest, input_digest: digest, included_count: 2, excluded_image_count: payload.export_excluded ? 1 : 0, exclusion_counts: { manual_exclude: 1 }, folder_below_minimum: { folder_count: 0, image_count: 0 }, folders: [{ source_identifier: 'artist-a', output_name: 'artist-a', image_count: 2, excluded: false, warning_codes: [] }], warnings: ['repeat_approximate'], settings: { export_excluded: payload.export_excluded ?? false, keep_annotation_files: keepAnnotations } })
     }
     if (suffix === 'export-runs' && request.method() === 'POST') {
       creates.push({ route: 'repeat', payload: request.postDataJSON() })
       const payload = request.postDataJSON() as { export_excluded?: boolean, image_format?: string, output_root: string }
       const created = run(`run-${runs[current.id].length + 1}`, current.id, payload.output_root)
-      created.settings = { export_excluded: payload.export_excluded ?? false, image_format: payload.image_format ?? 'original' }
+      created.settings = { export_excluded: payload.export_excluded ?? false, image_format: payload.image_format ?? 'original', keep_annotation_files: keepAnnotations }
       runs[current.id].unshift(created)
       return json(route, created, 202)
     }
@@ -116,7 +116,7 @@ async function installApiMock(page: Page) {
       creates.push({ route: 'first', payload: request.postDataJSON() })
       const payload = request.postDataJSON() as { export_excluded?: boolean, image_format?: string, output_root: string }
       const created = run('run-first', current.id, payload.output_root)
-      created.settings = { export_excluded: payload.export_excluded ?? false, image_format: payload.image_format ?? 'original' }
+      created.settings = { export_excluded: payload.export_excluded ?? false, image_format: payload.image_format ?? 'original', keep_annotation_files: keepAnnotations }
       runs[current.id].unshift(created)
       return json(route, created, 202)
     }
@@ -146,7 +146,7 @@ test('first copy export previews folders and releases the matching digest payloa
   await expect.poll(() => api.creates.length).toBe(1)
   expect(api.creates[0]).toMatchObject({ route: 'first', payload: { expected_gate: 'evidence_review', export_excluded: true, output_root: 'E:/first-new', image_format: 'webp', preview_digest: digest } })
   await expect(page.locator('.repeat-export-run').getByText('WebP', { exact: true })).toBeVisible()
-  await expect(page.locator('.repeat-export-run').getByText('已启用，原格式平铺到 _excluded')).toBeVisible()
+  await expect(page.locator('.repeat-export-run').getByText('已启用，原格式平铺到 _excluded，附带同名标注', { exact: true })).toBeVisible()
 })
 
 test('first copy export optionally previews and exports excluded images', async ({ page }) => {
@@ -155,14 +155,29 @@ test('first copy export optionally previews and exports excluded images', async 
   await page.goto('/#exports')
   await page.getByRole('button', { name: '稍后处理' }).click()
   await expect(page.getByLabel('导出被筛除的图片', { exact: true })).not.toBeChecked()
+  await expect(page.getByText(/是否附带标注跟随「保留同名标注文件」设置/)).toBeVisible()
   await page.getByRole('textbox', { name: '导出目录', exact: true }).fill('E:/first-excluded')
   await page.getByLabel('导出被筛除的图片', { exact: true }).check()
   await page.getByRole('button', { name: '预览导出' }).click()
-  await expect(page.getByText(/筛除图片 1 张/)).toBeVisible()
+  await expect(page.getByText('筛除图片 1 张，原格式平铺到 _excluded，附带同名标注', { exact: true })).toBeVisible()
   expect(api.previews[0]).toMatchObject({ export_excluded: true })
   await page.getByRole('button', { name: '完成复核并创建导出' }).click()
   await expect.poll(() => api.creates.length).toBe(1)
   expect(api.creates[0]).toMatchObject({ route: 'first', payload: { export_excluded: true } })
+})
+
+test('excluded export summary follows a disabled annotation option', async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem('dataset-audit-selected-task-v2', 'task-first'))
+  const api = await installApiMock(page, { keepAnnotations: false })
+  await page.goto('/#exports')
+  await page.getByRole('button', { name: '稍后处理' }).click()
+  await page.getByRole('textbox', { name: '导出目录', exact: true }).fill('E:/first-excluded-plain')
+  await page.getByLabel('导出被筛除的图片', { exact: true }).check()
+  await page.getByRole('button', { name: '预览导出' }).click()
+  await expect(page.getByText('筛除图片 1 张，原格式平铺到 _excluded，不附带标注', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '完成复核并创建导出' }).click()
+  await expect.poll(() => api.creates.length).toBe(1)
+  await expect(page.locator('.repeat-export-run').getByText('已启用，原格式平铺到 _excluded，不附带标注', { exact: true })).toBeVisible()
 })
 
 test('repeat copy export invalidates preview when excluded export is toggled', async ({ page }) => {

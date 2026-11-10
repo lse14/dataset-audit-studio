@@ -473,7 +473,10 @@ class ExportRunPlanner:
                 raise ExportRunError(
                     "export_collision", "Training output folder conflicts with _excluded"
                 )
+            # Excluded sidecars follow the same task-level annotation switch as training files.
+            keep_annotations = bool(settings.get("keep_annotation_files", True))
             used_names: set[str] = set()
+            used_stems: set[str] = set()
             for row in excluded_rows:
                 # Copy the original even when training export would use a rendered frame.
                 self._source_folder(row.relative_path, source_root.name)
@@ -499,13 +502,20 @@ class ExportRunPlanner:
                 original = PurePosixPath(row.relative_path)
                 name = original.name
                 counter = 2
-                while self._folder_key(name) in used_names:
+                # Paired sidecars share the image stem, so stems must also stay unique.
+                while self._folder_key(name) in used_names or (
+                    keep_annotations and self._folder_key(PurePosixPath(name).stem) in used_stems
+                ):
                     name = f"{original.stem}_{counter}{original.suffix}"
                     counter += 1
                 used_names.add(self._folder_key(name))
+                used_stems.add(self._folder_key(PurePosixPath(name).stem))
+                destination = PurePosixPath("_excluded", name)
                 pending_files.append(
-                    _PendingExportFile(f"_excluded/{name}", "excluded_image", source)
+                    _PendingExportFile(destination.as_posix(), "excluded_image", source)
                 )
+                if keep_annotations:
+                    annotation_requests.append((source, destination))
         folder_summaries = tuple(
             {key: value for key, value in folder.items() if key not in {"rows", "suffixes"}}
             for folder in sorted(
@@ -684,7 +694,6 @@ class ExportRunPlanner:
             plan=ExportPlan(
                 files=tuple(files),
                 datasets=datasets,
-                latent_records=(),
                 input_digest=input_digest,
             ),
             summary=summary,
@@ -827,7 +836,6 @@ class ExportRunPlanner:
         plan = ExportPlan(
             files=tuple(sorted(files, key=lambda item: item.destination_relative)),
             datasets=(),
-            latent_records=(),
             input_digest=input_digest,
         )
         return RunPlan(

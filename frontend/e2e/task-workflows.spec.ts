@@ -43,7 +43,6 @@ const exportManifest = {
   consumes: [],
   default_config: {
     keep_annotation_files: true,
-    keep_latent_files: true,
   },
   default_enabled: true,
   display_name: '数据集导出',
@@ -55,11 +54,6 @@ const exportManifest = {
       keep_annotation_files: {
         default: true,
         title: '保留源标注文件',
-        type: 'boolean',
-      },
-      keep_latent_files: {
-        default: true,
-        title: '保留 Latent 缓存',
         type: 'boolean',
       },
     },
@@ -78,7 +72,6 @@ const generalProfile = {
     'export.dataset': {
       config: {
         keep_annotation_files: true,
-        keep_latent_files: true,
       },
       enabled: true,
     },
@@ -95,7 +88,6 @@ const overview = {
   cluster_nodes: 0,
   evidence_codes: [],
   exports: [],
-  latent_entries: 0,
   leaf_clusters: 0,
   ready_artifacts: 0,
   review_counts: [],
@@ -493,7 +485,6 @@ test('creates a task with source annotation retention disabled', async ({ page }
       'export.dataset': {
         config: {
           keep_annotation_files: false,
-          keep_latent_files: true,
         },
         enabled: true,
       },

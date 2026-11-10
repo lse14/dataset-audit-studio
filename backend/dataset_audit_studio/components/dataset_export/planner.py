@@ -19,7 +19,6 @@ from dataset_audit_studio.components.dataset_export.contracts import (
 from dataset_audit_studio.core.dataset_artifacts import (
     DatasetSample,
     DatasetWorkspace,
-    LatentReferenceArtifact,
 )
 from dataset_audit_studio.core.file_integrity import (
     file_identity_matches,
@@ -138,13 +137,6 @@ def _safe_relative(value: str) -> PurePosixPath:
     return path
 
 
-def _source_file(source_root: Path, relative: str) -> Path:
-    safe = _safe_relative(relative)
-    path = source_root.joinpath(*safe.parts).resolve(strict=True)
-    path.relative_to(source_root)
-    return path
-
-
 def _image_file(
     sample: DatasetSample,
     *,
@@ -233,23 +225,12 @@ def build_export_plan(
     workspace: DatasetWorkspace,
     *,
     source_root: Path,
-    latents: LatentReferenceArtifact | None,
     keep_annotation_files: bool = True,
-    keep_latent_files: bool = True,
     aesthetic_bin_plan: AestheticBinPlan | None = None,
 ) -> ExportPlan:
     source_root = source_root.resolve(strict=True)
     samples = {sample.sample_id: sample for sample in workspace.samples}
-    latent_map = (
-        {(dataset.stage, dataset.resolution): dataset for dataset in latents.datasets}
-        if keep_latent_files and latents is not None
-        else {}
-    )
-    latent_datasets = latents.datasets if keep_latent_files and latents is not None else ()
-    if len(latent_map) != len(latent_datasets):
-        raise RuntimeError("Latent artifact contains duplicate dataset identities")
     files: dict[str, PlannedFile] = {}
-    latent_records = {}
     verified_images: dict[str, tuple[Path, PurePosixPath, str, int, str]] = {}
     bin_directories: dict[str, str] = {}
     if aesthetic_bin_plan is not None:
@@ -302,48 +283,6 @@ def build_export_plan(
                     if add_file(annotation):
                         dataset_file_count += 1
                         dataset_byte_count += annotation.size_bytes
-        latent_dataset = latent_map.get((dataset.stage, dataset.resolution))
-        if latent_dataset is not None:
-            for copy in latent_dataset.copies:
-                source = _source_file(source_root, copy.source_relative)
-                if source.stat().st_size != copy.size_bytes or sha256_file(source) != copy.sha256:
-                    raise RuntimeError(
-                        f"Latent reference changed after resolve: {copy.source_relative}"
-                    )
-                planned_copy = PlannedFile(
-                    destination_relative=(
-                        prefix / _safe_relative(copy.destination_relative)
-                    ).as_posix(),
-                    source_path=source,
-                    content=None,
-                    sha256=copy.sha256,
-                    size_bytes=copy.size_bytes,
-                    kind=copy.kind,
-                )
-                if add_file(planned_copy):
-                    dataset_file_count += 1
-                    dataset_byte_count += planned_copy.size_bytes
-            for catalog in latent_dataset.catalogs:
-                content = catalog.content.encode("utf-8")
-                if hashlib.sha256(content).hexdigest() != catalog.sha256:
-                    raise RuntimeError("Latent catalog content changed after resolve")
-                planned_catalog = PlannedFile(
-                    destination_relative=(
-                        prefix / _safe_relative(catalog.destination_relative)
-                    ).as_posix(),
-                    source_path=None,
-                    content=content,
-                    sha256=catalog.sha256,
-                    size_bytes=len(content),
-                    kind="mikazuki_catalog",
-                )
-                if add_file(planned_catalog):
-                    dataset_file_count += 1
-                    dataset_byte_count += planned_catalog.size_bytes
-            for record in latent_dataset.records:
-                latent_records[
-                    (record.cache_kind, record.source_path, record.entry_key)
-                ] = record
         dataset_summaries.append(
             DatasetSummary(
                 stage=dataset.stage,
@@ -363,7 +302,6 @@ def build_export_plan(
     return ExportPlan(
         files=ordered_files,
         datasets=tuple(dataset_summaries),
-        latent_records=tuple(latent_records.values()),
         input_digest=input_digest,
         aesthetic_bin_plan=aesthetic_bin_plan,
     )

@@ -23,8 +23,9 @@ def test_component_manifest_api_exposes_the_validated_composition_root(tmp_path:
         response = client.get("/api/components")
         assert response.status_code == 200
         payload = response.json()
-        assert payload["total"] == 14
-        assert len({item["id"] for item in payload["items"]}) == 14
+        assert payload["total"] == 13
+        assert len({item["id"] for item in payload["items"]}) == 13
+        assert "latent.resolve" not in {item["id"] for item in payload["items"]}
         assert all(item["failure_policy"] == "stop" for item in payload["items"])
         assert all(item["json_schema"]["type"] == "object" for item in payload["items"])
         assert all(isinstance(item["default_config"], dict) for item in payload["items"])

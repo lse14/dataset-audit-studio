@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+# Removed options that may still appear in stored task configs and presets.
+_RETIRED_FIELDS = frozenset({"keep_latent_files"})
 
 
 class DatasetExportConfig(BaseModel):
@@ -16,8 +19,14 @@ class DatasetExportConfig(BaseModel):
     mode: Literal["copy", "rewrite"] = "copy"
     backup_enabled: bool = True
     rewrite_preview_digest: str | None = Field(default=None, min_length=64, max_length=64)
-    keep_latent_files: bool = True
     keep_annotation_files: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_retired_fields(cls, value: Any) -> Any:
+        if isinstance(value, dict) and not _RETIRED_FIELDS.isdisjoint(value):
+            return {key: item for key, item in value.items() if key not in _RETIRED_FIELDS}
+        return value
 
     @classmethod
     def from_task_config(cls, config: dict[str, Any]) -> DatasetExportConfig:

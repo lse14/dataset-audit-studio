@@ -10,11 +10,10 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from PIL import Image, ImageOps
 from sqlalchemy import select
 
+from dataset_audit_studio.core.file_integrity import file_identity_matches
 from dataset_audit_studio.database.models import Sample, Task
 from dataset_audit_studio.database.session import Database
 from dataset_audit_studio.jobs.errors import TaskDomainError, TaskNotFound
-from dataset_audit_studio.latent.common import source_is_unchanged
-from dataset_audit_studio.latent.types import LatentSample
 from dataset_audit_studio.workspace.types import DirectoryEntryView, DirectoryListingView
 
 
@@ -73,16 +72,12 @@ class WorkspaceFileAccess:
             return cache
         source = source_root.joinpath(*Path(values["relative_path"]).parts).resolve(strict=True)
         source.relative_to(source_root.resolve(strict=True))
-        unchanged = LatentSample(
-            sample_id=sample_id,
-            relative_path=values["relative_path"],
-            source_path=source,
-            source_size=values["source_size"],
-            source_mtime_ns=values["source_mtime_ns"],
-            source_sha256=values["source_sha256"],
-            export_requires_render=False,
-        )
-        if not source_is_unchanged(unchanged):
+        if not file_identity_matches(
+            source,
+            size_bytes=values["source_size"],
+            mtime_ns=values["source_mtime_ns"],
+            sha256=values["source_sha256"],
+        ):
             raise RuntimeError("Source image changed after scanning")
         if values["extracted_frame_path"]:
             image_path = self.project_root.joinpath(
@@ -161,16 +156,12 @@ class WorkspaceFileAccess:
         values: dict[str, object],
     ) -> Path:
         source = self._contained_file(source_root, str(values["relative_path"]))
-        unchanged = LatentSample(
-            sample_id=sample_id,
-            relative_path=str(values["relative_path"]),
-            source_path=source,
-            source_size=int(values["source_size"]),
-            source_mtime_ns=int(values["source_mtime_ns"]),
-            source_sha256=str(values["source_sha256"]),
-            export_requires_render=False,
-        )
-        if not source_is_unchanged(unchanged):
+        if not file_identity_matches(
+            source,
+            size_bytes=int(values["source_size"]),
+            mtime_ns=int(values["source_mtime_ns"]),
+            sha256=str(values["source_sha256"]),
+        ):
             raise MediaAccessError("Sample media identity no longer matches the scanned source")
         return source
 

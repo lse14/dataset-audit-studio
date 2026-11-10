@@ -14,7 +14,6 @@ from dataset_audit_studio.app.component_registration import (
     ClusteringExecutionBinding,
     ComponentRegistrationError,
     DatasetExportExecutionBinding,
-    LatentResolutionExecutionBinding,
     MediaScanExecutionBinding,
     ReviewDecisionExecutionBinding,
     ScoringExecutionBinding,
@@ -288,8 +287,6 @@ def build_component_execution_catalog(
             return clustering_component
         if isinstance(binding, ReviewDecisionExecutionBinding):
             return review_decision_component
-        if isinstance(binding, LatentResolutionExecutionBinding):
-            return _reject_legacy_exporting_component
         if isinstance(binding, DatasetExportExecutionBinding):
             return exporting_component
         raise ValueError(f"Unsupported execution binding: {type(binding).__name__}")
@@ -478,19 +475,6 @@ def _run_exporting_component_inline(
     else:
         raise ValueError(f"Unsupported exporting component: {component_id}")
     return {**asdict(summary), "component_id": component_id}
-
-
-def _reject_legacy_exporting_component(
-    request,
-    _token,
-    *,
-    component_id: str | None = None,
-    **_kwargs,
-) -> dict[str, Any]:
-    component_id = component_id or getattr(request, "component_id", "legacy")
-    raise ValueError(
-        f"Unsupported exporting component: {component_id}; legacy latent worker is disabled"
-    )
 
 
 def _default_scoring_process_runner():

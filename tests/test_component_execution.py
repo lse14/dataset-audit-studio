@@ -184,7 +184,8 @@ def test_execution_factory_binds_custom_registration_to_inline_exporting(
         registration_catalog=registration_catalog,
     )
 
-    with pytest.raises(ValueError, match="latent.resolve"):
+    # The retired latent resolver no longer has an execution port.
+    with pytest.raises(KeyError, match="latent.resolve"):
         catalog.execute(
             ComponentRunRequest(
                 task_id="task",
